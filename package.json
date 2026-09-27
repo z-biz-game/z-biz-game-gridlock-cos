@@ -1,0 +1,38 @@
+{
+  "name": "gridlock",
+  "version": "1.0.0",
+  "description": "死锁车库 Gridlock — 浏览器原生 Rush Hour. 每关最少步数由广度优先搜索量出, 关卡在构建期生成并复验.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5180",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "balance": "node test/balance.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "rush-hour",
+    "slide-puzzle",
+    "bfs",
+    "procedural",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.gridlock",
+    "productName": "Gridlock",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}
