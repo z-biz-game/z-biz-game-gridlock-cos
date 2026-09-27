@@ -8,6 +8,7 @@
 | **App 名称** | 死锁车库 |
 | **形态** | 浏览器原生（ES modules，零依赖）+ Electron 壳 + GitHub Pages |
 | **仓库** | `z-biz-game/z-biz-game-gridlock-cos` |
+| **线上** | https://z-biz-game.github.io/z-biz-game-gridlock-cos/ （Pages + CI 双绿，50 条线上断言见下） |
 | **分组** | E（益智解谜），无成就 / 无排行榜 / 无云存档 |
 | **玩法概述** | Rush Hour：在网格停车场里拖动车辆，把橙色主角车开出右侧闸门 |
 | **核心差异点** | 每一关的"最少步数"是 BFS 量出来的证明值；关卡由构建期生长 + 复验，不是人手摆的 |
@@ -65,6 +66,8 @@
 | 15 | favicon 404 留在 console 里 | 台架有"console 必须干净"的断言，噪音会掩盖真错误 | `<link rel="icon" href="data:,">`，不加任何资产 | `index.html`；`@boot` |
 | 16 | README 的池子表手抄"中位局面数" | 抄成了按步数排序后中间那一行的状态数，不是状态数的中位 —— 四行全错，且没有任何测试能发现（文档不是代码）。`lane` 一行错了 1743 | 中位数收进 `js/core/library.js` 的 `stats()`，表里的数字改为从 `node -e ... stats()` 的输出抄；并断言每档中位落在自己的区间内 | `js/core/library.js:76`；`test/library.test.mjs` "the pool summary the docs are copied from" |
 | 17 | DESIGN.md 初稿写"双击 `index.html` 也能玩，只是不记事" | 从 `storage.js` 有 try/catch 推出来的乐观结论，没人真试过 | 实测：headless Chrome 打开 `file:///.../index.html` 后 `window.gridlock` 是 `undefined`，控制台报 `<script type="module">` 被 CORS 挡掉。文档改为明说双击玩不了、本地必须 `node server.cjs`；try/catch 的理由改成"存储被拒的场合"（无痕、嵌入式 webview） | DESIGN.md 第 6 节；`README.md:25` |
+| 18 | `playtest.mjs` 导航之后 `sleep(1800)` | 把台架指向线上时三条断言红、canvas 停在未样式的 300×150，看起来像部署坏了，实际只是 Pages 的模块图比 localhost 慢 —— 计时器把环境问题伪装成产品故障 | `waitShell()` 轮询 `window.gridlock.state.id`（`SHELL_TIMEOUT` 默认 30s），本地仍然秒过；同一套断言本地与线上都绿 | `tools/playtest.mjs:98`；DESIGN.md 第 7.4 节 |
+| 19 | 以为 `configure-pages` 会把 Pages 打开 | 全新仓库没有 Pages 站点可附着，第一次 deploy 直接红在 `Run actions/configure-pages@v5` | 用 PAT `POST /repos/.../pages {"build_type":"workflow"}` 开一次（201），再推一个空提交重触发。**Actions 的写接口在这个 token 上仍然 404，所以重触发只能靠 push** | 首次 run `failure` / 第二次 `success`；提交 `ci: retrigger the Pages deploy…` |
 
 ## 构建验证结论
 
@@ -104,6 +107,26 @@ boot lot: kerb-01
 
 （`verify.sh` 把 `=== @boot ===` 与它的 `rows:` 行分开输出，这里并为一流；内容未改。）
 合计 **50 条断言，0 失败，console 无输出**。
+
+### 线上部署（https://z-biz-game.github.io/z-biz-game-gridlock-cos/）
+
+Pages 的 `Deploy to GitHub Pages` 与 `CI` 两条 workflow 均 `conclusion: success`。
+线上不只看 HTTP 200 —— 同一个台架把 `BASE_URL` 指向线上地址重跑，**50 条断言全绿**：
+
+```
+$ BASE_URL=https://z-biz-game.github.io/z-biz-game-gridlock-cos/ node tools/playtest.mjs eval @boot
+ok   the shell boots straight into a game
+ok   the canvas has real pixels
+ok   the lot was actually painted
+ok   the shipped pool loaded
+ok   every band reports a measured range
+ok   the browser's own search agrees with the printed par
+ok   the panel prints steps, par and the record
+fail: []
+```
+
+`@play` 10 / `@routes` 12 / `@save` 8 / `@pointer` 13，fail 均为空 ——
+包括用真实 `Input.dispatchMouseEvent` 在线上把一条认证最短路线拖完并通关。
 
 ### 交付物真实性（人眼核对过）
 

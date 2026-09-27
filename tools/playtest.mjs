@@ -15,6 +15,7 @@ const PORT = process.env.CDP_PORT || 9340;
 // Which page to attach to. Hard-coding the dev-server port silently evaluates
 // against a fresh about:blank tab when pointed at any other origin.
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:5180/';
+const SHELL_TIMEOUT = Number(process.env.SHELL_TIMEOUT || 30000);
 const ORIGIN = new URL(BASE).origin;
 const isOurs = (u) => typeof u === 'string' && u.startsWith(ORIGIN);
 const cmd = process.argv[2];
@@ -90,18 +91,36 @@ async function main() {
     return r.result.value;
   };
 
+  // Wait on the shell, not on a timer. The page is a module graph fetched over the network:
+  // a fixed sleep is long enough for a localhost server and too short for GitHub Pages, where
+  // it made an innocent deployment look broken (`window.gridlock` still undefined, canvas still
+  // the unstyled 300x150 default). The floor keeps the local case as fast as it was.
+  const waitShell = async (floorMs, budgetMs = SHELL_TIMEOUT) => {
+    await sleep(floorMs);
+    const deadline = Date.now() + budgetMs;
+    for (;;) {
+      let ready = false;
+      try {
+        ready = await runJS('!!(window.gridlock && window.gridlock.state && window.gridlock.state.id)');
+      } catch { ready = false; }
+      if (ready) return true;
+      if (Date.now() > deadline) return false;
+      await sleep(150);
+    }
+  };
+
   if (cmd === 'open') {
     await cdp.send('Page.navigate', { url: arg || BASE }, sessionId);
-    await sleep(2200);
+    await waitShell(600);
     console.log('opened ' + (arg || BASE) + '\n' + (logs.join('\n') || '(no console output)'));
   } else if (cmd === 'nav') {
     await cdp.send('Page.navigate', { url: arg }, sessionId);
-    await sleep(2500);
+    await waitShell(400);
     console.log('navigated\n' + (logs.join('\n') || '(no console output)'));
   } else if (cmd === 'eval') {
     if (process.argv[4] !== 'nonav') {
       await cdp.send('Page.navigate', { url: BASE }, sessionId);
-      await sleep(1800);
+      await waitShell(300);
     }
     if (arg && arg.startsWith('@')) {
       const name = arg.slice(1);

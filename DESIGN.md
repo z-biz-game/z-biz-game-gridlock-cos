@@ -214,7 +214,18 @@ pointer 段是**跑在 Node 侧**的：`base64` 之后逐条 dispatch `Input.dis
 3. 结果 JSON 由页面 `console.log` 带回，聚合器用**花括号计数**截取而不是 `JSON.parse(整行)`：
    headless Chrome 会在同一行后面追加别的 console 文本，直接 parse 是随机失败。
 
-### 7.4 不暂停 `visibilitychange`
+### 7.4 导航之后等的是 shell，不是秒表
+
+`tools/playtest.mjs` 在 `Page.navigate` 之后调 `waitShell()` 轮询 `window.gridlock.state.id`，
+而不是 `sleep(1800)`。**这条是被一次假故障逼出来的**：把 `BASE_URL` 指向
+`https://z-biz-game.github.io/z-biz-game-gridlock-cos/` 跑 `@boot`，三条断言红，
+canvas 尺寸停在未样式的 `300×150` —— 看起来像线上部署坏了，其实只是 Pages 的模块图比 localhost 慢，
+固定 sleep 不够。等成轮询之后同一套 50 条断言在线上全绿（含 `@pointer` 的真实鼠标事件）。
+
+所以：**台架必须能同时打本地和线上**，`BASE_URL` 一个变量决定目标；任何"只在本地计时够用"的写法
+都会在下一次查线上时骗你。
+
+### 7.5 不暂停 `visibilitychange`
 
 `js/main.js:333` 显式地不接这个事件。通关动画和胜利卡片由同一个 rAF 循环驱动，
 而 headless Chrome 把自己报成 hidden —— 一暂停，浏览器测试永远看不到通关。
