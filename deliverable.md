@@ -77,6 +77,7 @@
 | 24 | `spent(game, key)` / `parOf(lot, key)` 留默认值就好 | 有默认值＝一个拼错的名字（`"triples"`）会安静退回滑步，屏幕上却写着"格步" | 两个函数进门先过 `lawOf`，未知口径抛错；存档那侧同样拒写未知值 | `js/core/law.js:25,65,70`；`test/law.test.mjs:49`；`@law` 末条断言 |
 | 25 | `@pointer` 用 3 倍过拉"顺手"拖完全程，且只断言拖动次数 | **验收自身的漏洞**：过拉把车停在路线之外的格子上，第三拖起板子已经偏离认证路线，而旧断言从不看落点 —— 那一段是靠运气绿的 | 默认精确拖动，过拉单独一条断言；每拖一步比对 `pos[car]`，两个账本分别核对总数 | `tools/playtest.mjs` pointer 段 `and every car lands exactly where the route puts it` |
 | 26 | 文档写"四档难度带互不重叠" | 只对滑步成立。格步带是重叠的（lane 上界 22 撞 junction 下界 22，gridlock 下界 26 落在 junction 的 22–42 内），因为生成器只按滑步停机 | 池子表并排印两个带，并写明"格步带重叠"是没做、也没声称做了的事 | `js/data/lots.js:8` 的 `TIERS_META`；`test/library.test.mjs:101`；README 池子表 |
+| 27 | `js/core/make.js` 头上写着"随机撒车摸不到阶梯顶端，`test/balance.mjs` 就是证据" | 那句理由没有任何台架支撑：balance.mjs 跑的是**生长器**，它压根不撒车；而撒车这件事本身是可以量的，量了就不能再靠回忆写。写下来还是**错的**——10k/档实测 kerb 有 42 个、junction 有 6 个摸到自己的带上界 | 新增 `test/scatter.mjs`（`npm run scatter`，默认每档 1 万个、4 分 21 秒、种子固定），把那句话换成台架打印出来的三条：中位 1 拖、摸到带上界 10⁻⁴ 量级、顶层 0/10000，外加 22%–47% 无解 | `test/scatter.mjs`；`js/core/make.js:7-10`；DESIGN.md 第 3 节的表 |
 
 ## 构建验证结论
 
@@ -121,9 +122,13 @@ boot lot: kerb-01
 合计 **78 条断言，0 失败，console 无输出**。
 
 线上不只看 HTTP 200 —— 同一个台架把 `BASE_URL` 指向线上地址重跑，全部断言必须与本地同绿。
-**这一轮的线上复跑结果记在下一节**（部署本次提交之后跑）。首版交付时这段是 50 条断言在线上
-全绿，包含 `@pointer` 用真实 `Input.dispatchMouseEvent` 拖完一条认证最短路线；那一轮的代码
-与本提交不同，所以那个 50 只算历史证据，不能替本次背书。
+本轮的线上复跑（`BASE_URL=https://z-biz-game.github.io/z-biz-game-gridlock-cos/ SKIP_UNIT=1 bash tools/verify.sh`）：
+`@boot` 9 / `@play` 10 / `@routes` 12 / `@save` 8 / `@law` 21 / `@pointer` 18，合计 **78 条、0 失败、
+console 无输出**，六段条数与上面本地那一趟逐段相同。CI 侧同一提交（`d9e2e07`）：`unit` + `browser`
+在 run `36518568457`、Pages `build` + `deploy` 在 run `36518568214`，四个 job 全 `success`。
+线上还额外确认了 `js/core/law.js` 返回 200（新模块真的进了产物），以及 `index.html` 里印着"格步"。
+
+（首版交付时这段只有 50 条断言，那一轮的代码与本轮不同，所以那个 50 只算历史证据。）
 
 ### 交付物真实性（人眼核对过）
 
