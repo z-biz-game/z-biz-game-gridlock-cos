@@ -1,12 +1,13 @@
 // The other rig: what happens if you *scatter* cars instead of growing them.
 //
-// js/core/make.js is built the way it is because random placement cannot reach a hard jam,
-// and a comment asserting that is worth nothing unless somebody can re-run the measurement.
-// This is that measurement. Nothing here is a pass/fail gate — the numbers are printed, and
-// DESIGN.md 第 3 节 quotes whatever this last said.
+// js/core/make.js is built the way it is because random placement cannot be *aimed* at a hard
+// jam, and a comment asserting that is worth nothing unless somebody can re-run the
+// measurement. This is that measurement. Nothing here is a pass/fail gate — the numbers are
+// printed, the seed is fixed so they are the same numbers every time, and DESIGN.md 第 3 节
+// quotes whatever this last said.
 //
-//   node test/scatter.mjs                 # 5000 boards per tier
-//   SAMPLES=50000 node test/scatter.mjs
+//   node test/scatter.mjs                 # 10k boards per tier, 4m21s (the run the docs quote)
+//   SAMPLES=1000 node test/scatter.mjs    # a prefix of the same stream, ~6s
 //   TIERS=gridlock node test/scatter.mjs
 //
 // Scatter gets the *generous* treatment on purpose: as many cars as the tier's budget
@@ -22,7 +23,7 @@ import { validate } from '../js/core/lot.js';
 import { DRAG } from '../js/core/law.js';
 import { rngFrom } from '../js/core/rng.js';
 
-const N = Number(process.env.SAMPLES || 5000);
+const N = Number(process.env.SAMPLES || 10000);
 const want = (process.env.TIERS || '').split(',').filter(Boolean);
 const tiers = want.length ? TIERS.filter((t) => want.includes(t.key)) : TIERS;
 
