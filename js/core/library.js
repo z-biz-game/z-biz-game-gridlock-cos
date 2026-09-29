@@ -18,6 +18,9 @@ const prepared = LOTS.map((row) => ({
   id: row.id,
   tier: row.tier,
   par: row.moves,
+  parCell: row.movesCell,
+  witness: row.witness,
+  table: row.table,
   states: row.states,
   cars: row.cars,
   spec: row.spec,
@@ -76,23 +79,33 @@ function median(sorted) {
 export function stats() {
   const byTier = {};
   for (const l of prepared) {
-    const s = byTier[l.tier] || (byTier[l.tier] = { n: 0, min: Infinity, max: 0, carsMin: Infinity, carsMax: 0, statesMin: Infinity, statesMax: 0, moves: [], states: [] });
+    const s = byTier[l.tier] || (byTier[l.tier] = {
+      n: 0, min: Infinity, max: 0, cellMin: Infinity, cellMax: 0, tabled: 0,
+      carsMin: Infinity, carsMax: 0, statesMin: Infinity, statesMax: 0, moves: [], cells: [], states: [],
+    });
     s.n++;
     if (l.par < s.min) s.min = l.par;
     if (l.par > s.max) s.max = l.par;
+    if (l.parCell < s.cellMin) s.cellMin = l.parCell;
+    if (l.parCell > s.cellMax) s.cellMax = l.parCell;
+    if (l.table) s.tabled++;
     if (l.cars < s.carsMin) s.carsMin = l.cars;
     if (l.cars > s.carsMax) s.carsMax = l.cars;
     if (l.states < s.statesMin) s.statesMin = l.states;
     if (l.states > s.statesMax) s.statesMax = l.states;
     s.moves.push(l.par);
+    s.cells.push(l.parCell);
     s.states.push(l.states);
   }
   for (const s of Object.values(byTier)) {
     s.moves.sort((a, b) => a - b);
+    s.cells.sort((a, b) => a - b);
     s.states.sort((a, b) => a - b);
     s.movesMed = median(s.moves);
+    s.cellsMed = median(s.cells);
     s.statesMed = median(s.states);
     delete s.moves;
+    delete s.cells;
     delete s.states;
   }
   return { lots: prepared.length, byTier };

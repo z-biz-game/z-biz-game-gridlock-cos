@@ -55,6 +55,12 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .readout .par dd { color: var(--amber); }
 .readout .best dd { color: var(--cyan); }
 
+.laws { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.laws button { display: grid; gap: 2px; padding: 8px 6px; font-size: 13px; text-align: center; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ink-dim); }
+.laws button small { font-size: 10px; letter-spacing: 0.02em; }
+.laws button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
+.laws button.here { color: var(--amber); border-color: rgba(224, 166, 60, 0.5); background: rgba(224, 166, 60, 0.08); }
+
 .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .controls button { padding: 10px 4px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ink); }
 .controls button:hover:not(:disabled) { border-color: rgba(224, 166, 60, 0.5); color: var(--amber); }

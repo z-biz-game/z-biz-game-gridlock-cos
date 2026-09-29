@@ -5,7 +5,7 @@
 //   node playtest.mjs open  <url>          # reuse-or-create our page and navigate
 //   node playtest.mjs nav   <url>
 //   node playtest.mjs eval  '<js expression>'   # pass `nonav` to skip the reload
-//   node playtest.mjs eval  '@boot'         # | @play | @routes | @save | @pointer
+//   node playtest.mjs eval  '@boot'         # | @play | @routes | @save | @law | @pointer
 //   node playtest.mjs shot  <path.png>
 //   node playtest.mjs logs
 //
@@ -126,7 +126,7 @@ async function main() {
       const name = arg.slice(1);
       let value = null;
       if (name === 'pointer') {
-        value = await pointerScenario(cdp, sessionId, runJS);
+        value = await pointerScenario(cdp, sessionId, runJS, waitShell);
       } else if (SCENARIOS[name]) {
         try {
           value = await runJS(SCENARIOS[name]);
@@ -165,7 +165,7 @@ async function main() {
 // The one suite a page-side script cannot run: real input. Everything below goes through
 // Chrome's own mouse and keyboard over CDP, so what gets asserted is the pointer-to-car
 // wiring in js/view.js rather than the rules behind it.
-async function pointerScenario(cdp, sessionId, runJS) {
+async function pointerScenario(cdp, sessionId, runJS, waitShell) {
   const rows = [];
   const rec = (name, pass, detail) => rows.push({
     test: name, pass: !!pass,
@@ -188,37 +188,51 @@ async function pointerScenario(cdp, sessionId, runJS) {
     await sleep(70);
   }
 
-  // Pull a car several times further than it needs to go: js/core/game.js has to clip
-  // the ask, and one pull of any length has to cost exactly one move.
-  const pull = (p, delta, over = 3) => drag(p, p.horiz ? delta * p.cell * over : 0, p.horiz ? 0 : delta * p.cell * over);
+  // Pull a car exactly as far as the route asks. Over-pulling is tested on its own below
+  // (an eight-fold pull has to stop at the lot line); here the point is that a real mouse
+  // lands each car where the certified route says, which is the only way the two ledgers
+  // can be checked against the board rather than against a guess.
+  const pull = (p, delta, over = 1) => drag(p, p.horiz ? delta * p.cell * over : 0, p.horiz ? 0 : delta * p.cell * over);
 
-  await runJS(`window.gridlock.load('#/c/1'); 'ok'`);
+  await runJS(`window.gridlock.setLaw('drag'); window.gridlock.load('#/c/1'); 'ok'`);
   await sleep(300);
 
-  const ids = await runJS(`['lot','undo','hint','restart','share','curtain','stars','shelf','wipe'].map((i) => [i, !!document.getElementById(i)])`);
+  const ids = await runJS(`['lot','undo','hint','restart','share','curtain','stars','shelf','wipe','laws','readout','totals'].map((i) => [i, !!document.getElementById(i)])`);
   rec('every control the shell reaches for exists', ids.every(([, on]) => on), Object.fromEntries(ids));
 
   const start = await runJS(`(() => {
     const g = window.gridlock;
     const spec = g.lot();
     const i = spec.cars.findIndex((c) => c.hero);
-    return { state: g.state, path: g.path(), hero: i, len: spec.cars[i].len, w: spec.w, h: spec.h };
+    return { state: g.state, path: g.path(), pos: g.pos(), hero: i, len: spec.cars[i].len, w: spec.w, h: spec.h };
   })()`);
   const par = start.state.par;
   rec('a lot loads with a certified par', start.state.id && par >= 1 && start.path.length === par, { id: start.state.id, par, path: start.path.length });
 
   let played = 0;
+  let owedCells = 0;
+  const where = start.pos.slice();
   const log = [];
+  let drifted = null;
   for (const m of start.path) {
     const p = await runJS(`window.gridlock.carPoint(${m.car})`);
     if (!p) { rec(`car ${m.car} is on screen`, false, p); break; }
     await pull(p, m.delta);
-    const after = await runJS(`(() => { const g = window.gridlock; return { moves: g.state.moves, at: g.pos()[${m.car}], done: g.state.done }; })()`);
+    owedCells += Math.abs(m.delta);
+    where[m.car] += m.delta;
+    const after = await runJS(`(() => { const g = window.gridlock; return { moves: g.state.moves, cells: g.state.cells, at: g.pos()[${m.car}], done: g.state.done }; })()`);
     played++;
-    log.push({ car: m.car, want: m.delta, ...after });
+    log.push({ car: m.car, want: m.delta, owed: where[m.car], ...after });
     if (after.moves !== played) { rec(`drag ${played} counted as one move`, false, log); break; }
+    if (after.cells !== owedCells) { rec(`drag ${played} billed ${owedCells} 格步 for ${after.cells}`, false, log); break; }
+    if (after.at !== where[m.car]) { drifted = log[log.length - 1]; break; }
   }
   rec('the mouse plays the whole certified route, one move per drag', played === start.path.length && played > 0, log);
+  rec('and every car lands exactly where the route puts it', played === start.path.length && !drifted, drifted || log[log.length - 1]);
+  // The same fingers, the other ledger: the drags came out at par because that is what the
+  // route was measured in, and the cells have to be at least the lot's second number.
+  const ledgers = await runJS(`(() => { const g = window.gridlock; return { moves: g.state.moves, cells: g.state.cells, par: g.state.par, parCell: g.state.parCell }; })()`);
+  rec('one pull bills one 滑步 but every 格步 the car travelled', ledgers.moves === played && ledgers.cells === owedCells && ledgers.cells >= ledgers.parCell, { ...ledgers, owedCells });
 
   const end = await runJS(`(() => {
     const g = window.gridlock;
@@ -291,6 +305,35 @@ async function pointerScenario(cdp, sessionId, runJS) {
   await sleep(160);
   rec('the r key restarts', (await runJS(`window.gridlock.state.moves`)) === 0, await runJS(`window.gridlock.state`));
 
+  // The law switch is a control like any other, so it gets pressed with a real mouse, and
+  // the preference then has to survive an actual page load rather than living only in the
+  // object the test was holding on to.
+  const chipBox = await runJS(`(() => {
+    const b = document.querySelector('#laws button[data-law="cell"]');
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), law: window.gridlock.state.law };
+  })()`);
+  if (!chipBox) {
+    rec('a real click on 格步 switches the counting law', false, chipBox);
+  } else {
+    await mouse('mousePressed', chipBox.x, chipBox.y, 1);
+    await mouse('mouseReleased', chipBox.x, chipBox.y, 0);
+    await sleep(160);
+    rec('a real click on 格步 switches the counting law', chipBox.law === 'drag' && (await runJS(`window.gridlock.state.law`)) === 'cell', chipBox);
+    // Page.reload, not a navigate to a hash: a fragment-only navigation is the same document,
+    // so the module graph never re-runs and a "preference survived the reload" assertion would
+    // be the test agreeing with itself. timeOrigin is the witness that this really was a boot.
+    const before = await runJS(`performance.timeOrigin`);
+    await cdp.send('Page.reload', {}, sessionId);
+    const ready = await waitShell(300);
+    const after = ready ? await runJS(`(() => { const g = window.gridlock; return { at: performance.timeOrigin, law: g.state.law, current: document.querySelector('#laws button[data-law="cell"]').getAttribute('aria-current') }; })()`).catch(() => null) : null;
+    rec('a reload reads the law back out of the save file', !!after && after.at !== before && after.law === 'cell' && after.current === 'true', { before, after });
+    await runJS(`window.gridlock.setLaw('drag'); 'ok'`);
+    await sleep(120);
+    rec('and the shell can be handed back on the classic convention', (await runJS(`window.gridlock.state.law`)) === 'drag', await runJS(`window.gridlock.state.law`));
+  }
+
   return { rows };
 }
 
@@ -301,7 +344,7 @@ const SCENARIOS = {
     const rows = [];
     const rec = (name, pass, detail) => rows.push({ test: name, pass: !!pass, detail: detail === undefined ? null : JSON.parse(JSON.stringify(detail ?? null)) });
     window.__lastRows = rows;
-    rec('the shell boots straight into a game', g && g.version === 1 && g.state && g.state.mode === 'campaign', g && g.state);
+    rec('the shell boots straight into a game', g && g.version === 2 && g.state && g.state.mode === 'campaign', g && g.state);
     const c = document.getElementById('lot');
     rec('the canvas has real pixels', c.width > 0 && c.height > 0 && !!c.getContext('2d'), { w: c.width, h: c.height });
     const lit = (() => {
@@ -313,10 +356,12 @@ const SCENARIOS = {
     rec('the lot was actually painted', lit > 50, { litSamples: lit });
     const pool = g.pool;
     rec('the shipped pool loaded', pool && pool.lots >= 32, pool && pool.lots);
-    rec('every band reports a measured range', Object.values(pool.byTier).every((t) => t.n > 0 && t.min <= t.max && t.carsMin >= 2), pool.byTier);
+    rec('every band reports a measured range, in both laws', Object.values(pool.byTier).every((t) => t.n > 0 && t.min <= t.max && t.cellMin <= t.cellMax && t.carsMin >= 2), pool.byTier);
     rec("the browser's own search agrees with the printed par", g.path().length === g.state.par, { path: g.path().length, par: g.state.par });
+    rec("… and with the printed cell par", g.path('cell').length === g.state.parCell, { path: g.path('cell').length, parCell: g.state.parCell });
     const readout = document.getElementById('readout').textContent;
     rec('the panel prints steps, par and the record', /步数/.test(readout) && /最少/.test(readout) && /最佳/.test(readout), readout);
+    rec('the law chips are painted before anything is clicked', document.querySelectorAll('#laws button[data-law]').length === 2, document.getElementById('laws').innerHTML);
     return { rows };
   })()`,
 
@@ -329,6 +374,7 @@ const SCENARIOS = {
     const D = (id) => document.getElementById(id);
 
     g.store.reset();
+    g.setLaw('drag'); // a previous scenario may have left the preference on 格步
     g.load('#/c/1'); await sleep(150);
     const par = g.state.par;
     const path = g.path();
@@ -452,6 +498,73 @@ const SCENARIOS = {
     rec('清空存档 takes two clicks and clears everything',
       Object.keys(g.store.records).length === 0 && g.store.unlocked === 1 && localStorage.getItem(KEY) === null,
       { records: Object.keys(g.store.records), unlocked: g.store.unlocked, key: localStorage.getItem(KEY) });
+    return { rows };
+  })()`,
+
+  // The counting-law switch, on the hardest lot in the pool: two certified numbers, two
+  // live counters, and a grade that has to follow whichever one the player is looking at.
+  // The rule the stars are typed against is written out here rather than imported, so the
+  // page has to match it instead of agreeing with itself.
+  law: `(async () => {
+    const g = window.gridlock;
+    const rows = [];
+    const rec = (name, pass, detail) => rows.push({ test: name, pass: !!pass, detail: detail === undefined ? null : JSON.parse(JSON.stringify(detail ?? null)) });
+    window.__lastRows = rows;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const D = (id) => document.getElementById(id);
+    const KEY = 'gridlock.save.v1';
+    const chip = (k) => document.querySelector('#laws button[data-law="' + k + '"]');
+    const starsFor = (over) => (over <= 0 ? '★★★' : over <= 3 ? '★★☆' : '★☆☆');
+    const verdictFor = (over) => (over <= 0 ? '完美通行' : over <= 3 ? '干净脱身' : '勉强疏通');
+
+    g.store.reset();
+    g.setLaw('drag');
+    g.load('#/c/' + g.pool.lots); await sleep(200);
+    const s = g.state;
+    rec('the shell runs two counting laws, and both are on the panel', g.version === 2 && JSON.stringify(g.laws) === '["drag","cell"]', { version: g.version, laws: g.laws });
+    rec('this lot ships two different numbers', s.parCell > s.par && s.par >= 1, { par: s.par, parCell: s.parCell, id: s.id });
+    rec('the browser search finds both of them, by its own roads', g.path('drag').length === s.par && g.path('cell').length === s.parCell, { drag: g.path('drag').length, cell: g.path('cell').length });
+    const dragBill = g.path('drag').reduce((n, m) => n + Math.abs(m.delta), 0);
+    rec('the cheapest route in drags is not the cheapest in cells', dragBill >= s.parCell && s.parCell >= s.par, { dragCells: dragBill, parCell: s.parCell, par: s.par });
+    rec('both chips exist and exactly one is current', !!chip('drag') && !!chip('cell') && chip('drag').getAttribute('aria-current') === 'true' && chip('cell').getAttribute('aria-current') === 'false', chip('drag') && chip('drag').outerHTML);
+    const readout = D('readout').textContent;
+    rec('the panel prints the pair, not one number', /滑步／格步/.test(readout) && readout.includes(String(s.par)) && readout.includes(String(s.parCell)), readout);
+
+    chip('cell').click(); await sleep(140);
+    rec('clicking 格步 changes the law and leaves the lot alone', g.state.law === 'cell' && g.state.parNow === g.state.parCell && g.state.spent === 0 && g.state.moves === 0 && !g.state.done, g.state);
+    rec('the chip carries the active state', chip('cell').getAttribute('aria-current') === 'true' && chip('drag').getAttribute('aria-current') === 'false' && chip('cell').classList.contains('here'), chip('cell').outerHTML);
+    rec('the preference is a fact in the save file', JSON.parse(localStorage.getItem(KEY)).law === 'cell', JSON.parse(localStorage.getItem(KEY)));
+    const hintLine = g.hintOnce();
+    rec('a hint under 格步 speaks 格步', /格步/.test(hintLine.line) && /提示/.test(hintLine.line), hintLine);
+    D('restart').click(); await sleep(140);
+
+    const cellPath = g.path('cell');
+    g.play(cellPath); await sleep(180);
+    const after = g.state;
+    rec('the cell route is one cell at a time and lands on its own par', cellPath.every((m) => Math.abs(m.delta) === 1) && after.cells === after.parCell && after.done, { len: cellPath.length, cells: after.cells, parCell: after.parCell });
+    rec('the same run is par in cells and far over in drags', after.moves === cellPath.length && after.moves - after.par > 3, { moves: after.moves, par: after.par });
+    rec('the card grades it against the law being played', !D('curtain').hidden && D('stars').textContent === starsFor(0) && D('verdict').textContent === verdictFor(0), { stars: D('stars').textContent, verdict: D('verdict').textContent });
+    const card = D('tally').textContent;
+    rec('the card prints the other ledger too, so nothing is hidden', /另一本账/.test(card) && card.includes(String(after.moves)) && /通道逼出/.test(card), card);
+    const cellRun = g.store.record(after.id);
+    rec('the record keeps a best per ledger, with the flag of the ledger it matched',
+      cellRun.bestCell === after.parCell && cellRun.perfectCell === true && cellRun.best === after.moves && cellRun.perfect === false,
+      cellRun);
+
+    D('restart').click(); await sleep(140);
+    chip('drag').click(); await sleep(140);
+    rec('switching back mid-lot costs nothing and resets nothing', g.state.law === 'drag' && g.state.moves === 0 && g.state.cells === 0 && g.state.parNow === g.state.par, g.state);
+    g.play(g.path('drag')); await sleep(180);
+    const out = g.state;
+    rec('the drag route plays out in exactly par drags', out.moves === out.par && out.cells === dragBill && out.done, { moves: out.moves, par: out.par, cells: out.cells });
+    rec('the card reads the law it was played in: three stars again, for the other number', D('stars').textContent === starsFor(0) && D('verdict').textContent === verdictFor(0), { stars: D('stars').textContent, law: out.law });
+    const dragRun = g.store.record(out.id);
+    rec('the two flags are earned by two different runs, and both stick',
+      dragRun.perfect === true && dragRun.perfectCell === true && dragRun.best === out.par && dragRun.bestCell === after.parCell && dragRun.plays === 2,
+      { record: dragRun, par: out.par, parCell: after.parCell });
+    rec('the totals count both kinds of perfect separately', /滑步完美/.test(D('totals').textContent) && /格步完美/.test(D('totals').textContent), D('totals').textContent);
+
+    rec('a law this game does not have is refused, not quietly defaulted to', g.setLaw('triples') === 'drag' && g.state.law === 'drag' && JSON.parse(localStorage.getItem(KEY)).law === 'drag', g.state.law);
     return { rows };
   })()`,
 };

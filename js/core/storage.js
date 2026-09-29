@@ -6,6 +6,8 @@
 // unlock pointer. Everything here degrades to memory when localStorage is denied, which
 // it is under file:// and in private windows.
 
+import { LAWS } from './law.js';
+
 const KEY = 'gridlock.save.v1';
 
 function blank() {
@@ -13,7 +15,8 @@ function blank() {
     records: {},
     daily: {},
     unlocked: 1,
-    stats: { solves: 0, perfect: 0, drags: 0, hints: 0 },
+    law: 'drag',
+    stats: { solves: 0, perfect: 0, drags: 0, cells: 0, hints: 0 },
   };
 }
 
@@ -36,6 +39,9 @@ function load() {
           records: p.records && typeof p.records === 'object' ? p.records : base.records,
           daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
           unlocked: Number(p.unlocked) > 0 ? Number(p.unlocked) : base.unlocked,
+          // A hand-edited or older save that names a law we do not have falls back to the
+          // classic convention instead of making the shell throw on its first read.
+          law: LAWS.some((l) => l.key === p.law) ? p.law : base.law,
           stats: { ...base.stats, ...(p.stats || {}) },
         };
         return cache;
@@ -61,6 +67,17 @@ export const store = {
   get stats() { return load().stats; },
   get daily() { return load().daily; },
   get unlocked() { return load().unlocked; },
+  get law() { return load().law; },
+
+  // The counting law is a preference, not a result: it changes which of the lot's two
+  // certified numbers the grade is read against. Unknown keys never reach the save file.
+  setLaw(key) {
+    if (!LAWS.some((l) => l.key === key)) return load().law;
+    const s = load();
+    s.law = key;
+    persist();
+    return s.law;
+  },
 
   record(id) {
     return load().records[id] || null;
@@ -85,20 +102,24 @@ export const store = {
     return load().daily[dateKey] || null;
   },
 
-  // `par` is the certified shortest route, so "perfect" is a fact about this lot rather
-  // than a feeling: you matched the solver.
-  solve(id, { moves, par, hints }) {
+  // `par` and `parCell` are the two certified shortest routes for this lot, one per counting
+  // law (js/core/law.js). A finish is a fact about both ledgers, so both are recorded: "I
+  // matched the solver" has to say which of the solver's two numbers was matched.
+  solve(id, { moves, cells, par, parCell, hints }) {
     const s = load();
     const prev = s.records[id];
     const cur = {
       solved: true,
       best: !prev || !prev.best || moves < prev.best ? moves : prev.best,
+      bestCell: !prev || !prev.bestCell || cells < prev.bestCell ? cells : prev.bestCell,
       plays: (prev && prev.plays ? prev.plays : 0) + 1,
       perfect: moves <= par || !!(prev && prev.perfect),
+      perfectCell: cells <= parCell || !!(prev && prev.perfectCell),
     };
     s.records[id] = cur;
     s.stats.solves += 1;
     s.stats.drags += moves;
+    s.stats.cells += cells;
     s.stats.hints += hints || 0;
     if (moves <= par && !hints) s.stats.perfect += 1;
     persist();

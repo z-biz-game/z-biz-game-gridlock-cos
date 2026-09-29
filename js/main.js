@@ -3,6 +3,7 @@
 
 import { createGame, slide, undo, reset, hint, grade } from './core/game.js';
 import { solve } from './core/solve.js';
+import { LAWS, DRAG, CELL, lawOf, spent, parOf } from './core/law.js';
 import { store } from './core/storage.js';
 import {
   TIERS, ALL, byId, levelAt, lotsIn, randomLot, dailyLot, tierByKey, stats as poolStats,
@@ -13,6 +14,7 @@ import { createView } from './view.js';
 const $ = (id) => document.getElementById(id);
 const el = {
   modes: $('modes'), totals: $('totals'), crumbs: $('crumbs'), readout: $('readout'),
+  laws: $('laws'),
   shelf: $('shelf'), hintline: $('hintline'), curtain: $('curtain'), stars: $('stars'),
   verdict: $('verdict'), tally: $('tally'), undo: $('undo'), hint: $('hint'),
   restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
@@ -29,7 +31,14 @@ const app = {
   hints: 0,
   label: '',
   day: null,
+  // Which of the lot's two certified numbers the grade is read against. Both ledgers are
+  // kept whatever this says (js/core/game.js), so switching never invalidates a run.
+  law: store.law || DRAG,
 };
+
+function lawName() {
+  return lawOf(app.law).label;
+}
 
 function clampIndex(n) {
   return Math.min(LEVELS, Math.max(1, Number(n) || 1));
@@ -95,14 +104,27 @@ function renderCrumbs() {
   const tier = tierByKey(app.lot.tier);
   const rec = store.record(app.lot.id);
   el.crumbs.innerHTML = `${app.label}<b>${tier.label}<span class="band"> ${tier.blurb}</span></b>`;
+  const w = app.lot.witness || {};
+  const best = app.law === CELL ? (rec && rec.bestCell) : (rec && rec.best);
+  const matched = app.law === CELL ? !!(rec && rec.perfectCell) : !!(rec && rec.perfect);
   el.readout.innerHTML = [
-    field('步数', app.game.moves, '当前拖动'),
-    field('最少', app.lot.par, '搜索量出', 'par'),
-    field('最佳', rec && rec.best ? rec.best : '—', rec && rec.perfect ? '等于最少' : '你的纪录', 'best'),
-    field('局面', app.lot.states, '可通行变化'),
+    field('步数', `${app.game.moves}<small>／${app.game.cells}</small>`, '滑步／格步'),
+    field('最少', `${app.lot.par}<small>／${app.lot.parCell}</small>`, '两条搜索路都对上', 'par'),
+    field(`最佳·${lawName()}`, best ? best : '—', matched ? '等于最少' : '你的纪录', 'best'),
+    field('局面', app.lot.states, `通道逼出 ${w.drag}／${w.cell}`),
   ].join('');
   el.undo.disabled = !app.game.moves || app.game.done;
   el.hint.disabled = app.game.done;
+}
+
+// The two laws are not a difficulty knob and not a hint: they are two true statements about
+// the same position. Switching only changes which of them the grade and the hint line are
+// read against, so both counters keep running and neither is reset by the switch.
+function renderLaws() {
+  el.laws.innerHTML = LAWS.map((l) => {
+    const on = l.key === app.law;
+    return `<button type="button" data-law="${l.key}" aria-current="${on}" class="${on ? 'here' : ''}">${l.label}<small>${l.bill}</small></button>`;
+  }).join('');
 }
 
 function field(label, value, note, cls = '') {
@@ -111,8 +133,10 @@ function field(label, value, note, cls = '') {
 
 function renderTotals() {
   const s = store.stats;
-  el.totals.innerHTML = `已通 <b>${Object.values(store.records).filter((r) => r.solved).length}</b>/${LEVELS}`
-    + ` · 完美 <b>${Object.values(store.records).filter((r) => r.perfect).length}</b>`
+  const recs = Object.values(store.records);
+  el.totals.innerHTML = `已通 <b>${recs.filter((r) => r.solved).length}</b>/${LEVELS}`
+    + ` · 滑步完美 <b>${recs.filter((r) => r.perfect).length}</b>`
+    + ` · 格步完美 <b>${recs.filter((r) => r.perfectCell).length}</b>`
     + ` · 提示 <b>${s.hints}</b>`;
 }
 
@@ -172,6 +196,7 @@ function render() {
     b.setAttribute('aria-current', String(b.dataset.mode === app.mode));
   });
   renderCrumbs();
+  renderLaws();
   renderTotals();
   renderShelf();
 }
@@ -188,7 +213,7 @@ function commit(car, d) {
   else {
     view.redraw();
     renderCrumbs();
-    say(`拖动了 ${app.game.comp.axis[car] === 0 ? '横向' : '纵向'}车辆 · 已用 ${app.game.moves} 步`);
+    say(`拖动了 ${app.game.comp.axis[car] === 0 ? '横向' : '纵向'}车辆 · 已用 ${app.game.moves} 滑步／${app.game.cells} 格步`);
   }
   return true;
 }
@@ -196,18 +221,23 @@ function commit(car, d) {
 function finish() {
   const lot = app.lot;
   const g = app.game;
-  const rec = store.solve(lot.id, { moves: g.moves, par: lot.par, hints: app.hints });
+  const rec = store.solve(lot.id, {
+    moves: g.moves, cells: g.cells, par: lot.par, parCell: lot.parCell, hints: app.hints,
+  });
   if (app.day) store.markDaily(app.day, lot.id);
   let nextIndex = 0;
   if (app.mode === 'campaign') {
     store.unlock(Math.max(store.unlocked, app.index + 1));
     nextIndex = app.index < LEVELS ? app.index + 1 : 0;
   }
-  const gr = grade(g);
+  const gr = grade(g, app.law);
+  const other = app.law === CELL ? DRAG : CELL;
+  const bestNow = app.law === CELL ? rec.bestCell : rec.best;
   el.stars.textContent = stars(gr.stars);
   el.verdict.textContent = gr.label;
-  el.tally.innerHTML = `你的 <b>${g.moves}</b> 步 · 搜索最少 <b>${lot.par}</b> 步 · 提示 <b>${app.hints}</b>`
-    + (rec.best === g.moves ? '<br>这是这一关的最好成绩' : '');
+  el.tally.innerHTML = `你的 <b>${spent(g, app.law)}</b> ${lawName()} · ${lawName()}搜索最少 <b>${parOf(lot, app.law)}</b> · 提示 <b>${app.hints}</b>`
+    + `<br>同一路线的另一本账：${spent(g, other)} ${lawOf(other).label}／最少 ${parOf(lot, other)} · 通道逼出 ${lot.witness[other]}`
+    + (bestNow === spent(g, app.law) ? '<br>这是这一关该口径下的最好成绩' : '');
   el.next.hidden = !nextIndex;
   el.curtain.hidden = false;
   render();
@@ -274,7 +304,7 @@ el.undo.addEventListener('click', () => {
 });
 
 el.hint.addEventListener('click', () => {
-  const h = hint(app.game);
+  const h = hint(app.game, app.law);
   if (!h) {
     say('这条路已经堵死了 —— 撤销一步或重开，搜索从当前位置找不到出路');
     return;
@@ -284,8 +314,18 @@ el.hint.addEventListener('click', () => {
   const horiz = app.game.comp.axis[h.car] === 0;
   const fwd = horiz ? '右' : '下';
   const back = horiz ? '左' : '上';
-  say(`提示：动一下高亮的那辆，往 <b>${h.delta > 0 ? fwd : back}${Math.abs(h.delta)}</b> 格 —— 之后还需 <b>${h.left - 1}</b> 步`);
+  say(`提示（${lawName()}口径）：动一下高亮的那辆，往 <b>${h.delta > 0 ? fwd : back}${Math.abs(h.delta)}</b> 格 —— 之后还需 <b>${h.left - 1}</b> ${lawName()}`);
   renderCrumbs();
+});
+
+el.laws.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-law]');
+  if (!b) return;
+  app.law = store.setLaw(b.dataset.law);
+  renderLaws();
+  renderCrumbs();
+  const lot = app.lot;
+  toast(`${lawName()}口径：最少 ${parOf(lot, app.law)}，你已用 ${spent(app.game, app.law)}`);
 });
 
 function restart() {
@@ -336,7 +376,7 @@ view.start();
 apply();
 
 window.gridlock = {
-  version: 1,
+  version: 2,
   get state() {
     return {
       mode: app.mode,
@@ -345,7 +385,13 @@ window.gridlock = {
       tier: app.lot && app.lot.tier,
       index: app.index,
       moves: app.game && app.game.moves,
+      cells: app.game && app.game.cells,
       par: app.lot && app.lot.par,
+      parCell: app.lot && app.lot.parCell,
+      witness: app.lot && app.lot.witness,
+      law: app.law,
+      spent: app.game ? spent(app.game, app.law) : null,
+      parNow: app.lot && parOf(app.lot, app.law),
       hints: app.hints,
       done: !!(app.game && app.game.done),
       unlocked: store.unlocked,
@@ -356,6 +402,7 @@ window.gridlock = {
     };
   },
   get pool() { return poolStats(); },
+  get laws() { return LAWS.map((l) => l.key); },
   load(hash) { go(hash); return app.lot && app.lot.id; },
   // Where a car sits right now, in client pixels, and the pitch of one cell: what an
   // automated finger needs to press the car instead of the grid maths.
@@ -365,12 +412,19 @@ window.gridlock = {
   pos() { return app.game ? Array.from(app.game.pos) : null; },
   // The certified shortest route from this lot's start position — the same array the
   // generator measured the par with, recomputed here so a test can prove the browser
-  // agrees with the number printed on screen.
-  path() { return solve({ comp: app.game.comp }).path; },
+  // agrees with the number printed on screen. Under the cell law the route is longer and
+  // every step is one cell.
+  path(law = app.law) { return solve({ comp: app.game.comp }, { law }).path; },
   // Play a solver route through the same commit() a finger uses.
   play(path) {
     for (const m of path || []) commit(m.car, m.delta);
     return app.game.moves;
+  },
+  setLaw(key) {
+    app.law = store.setLaw(key);
+    renderLaws();
+    renderCrumbs();
+    return app.law;
   },
   hintOnce() { el.hint.click(); return { hints: app.hints, line: el.hintline.textContent }; },
   store,

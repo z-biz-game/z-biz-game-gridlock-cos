@@ -40,6 +40,7 @@
   <aside class="panel">
     <p class="crumbs" id="crumbs"></p>
     <dl class="readout" id="readout"></dl>
+    <div class="laws" id="laws" role="group" aria-label="计步口径"></div>
     <div class="controls">
       <button type="button" id="undo">撤销</button>
       <button type="button" id="hint">提示</button>
@@ -49,7 +50,9 @@
     <div class="shelf" id="shelf"></div>
     <details class="about">
       <summary>这一关的数字从哪来</summary>
-      <p>每一关的最少步数都由 <code>js/core/solve.js</code> 的广度优先搜索量出：一次拖动不论滑过几格都算一步。关卡来自 <code>tools/bake.mjs</code>——它在构建期跑生成器 <code>js/core/make.js</code>，只收下搜索能复现的那些，浏览器本身不做生成。</p>
+      <p>每一关印两个最少步数，来自同一个盘面的两种计步口径（<code>js/core/law.js</code>）：<b>滑步</b>——一次拖动不论滑过几格都算一步，这是经典卡片的口径；<b>格步</b>——滑一格算一步，拖三格记三步。两个数都由 <code>js/core/solve.js</code> 的穷尽搜索量出，而且各走两条独立的路对账：一条按该口径自己的边走广度优先，一条在拖动图上按格加权走 Dijkstra。对不上，<code>tools/bake.mjs</code> 就不发行这一关。</p>
+      <p>「局面」那一栏的小字是<b>通道见证</b>：不用搜索也能手数的下界——主角车到自己的出口位至少要走的格数，加上压在它必经通道上、每一辆都至少得挪一格的那些车。实测的最少步只会大于或等于它，超出的部分是这一关真正逼出来的腾挪。</p>
+      <p>关卡来自 <code>tools/bake.mjs</code>——它在构建期跑生成器 <code>js/core/make.js</code>，只收下搜索能复现的那些，浏览器本身不做生成。</p>
       <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
     </details>
   </aside>

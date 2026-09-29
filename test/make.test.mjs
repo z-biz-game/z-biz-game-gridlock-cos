@@ -5,6 +5,7 @@
 import { test, run, ok, eq } from '../tools/harness.mjs';
 import { validate, toSpec } from '../js/core/lot.js';
 import { solve } from '../js/core/solve.js';
+import { CELL } from '../js/core/law.js';
 import { TIERS, makeLot, tierByKey } from '../js/core/make.js';
 
 const kerb = TIERS[0];
@@ -30,6 +31,17 @@ test('what grows is legal, in band, and solvable for the number it claims', () =
   ok(lot.spec.cars.length >= kerb.cars[0] && lot.spec.cars.length <= kerb.cars[1], 'car budget honoured');
   eq(lot.spec.comp.hero >= 0, true, 'there is a hero to drive out');
   eq(lot.rating.states > 0, true, 'the census ran');
+});
+
+test('the grower carries a second number, measured on the way out rather than derived', () => {
+  const lot = makeLot('s7', kerb);
+  const cell = solve(lot.spec, { law: CELL });
+  ok(cell.ok, 'a board the drag law can get out of is solvable one cell at a time too');
+  eq(cell.moves, lot.rating.movesCell, 'the number the grower returns is the number the search finds');
+  ok(cell.moves >= lot.rating.moves, `and it cannot bill fewer steps than the drag law (${cell.moves} < ${lot.rating.moves})`);
+  const w = lot.rating.witness;
+  ok(w.drag <= lot.rating.moves && w.cell <= cell.moves, `floor ${w.drag}/${w.cell} must sit under ${lot.rating.moves}/${cell.moves}`);
+  eq(lot.rating.states > 0, true, 'the census still ran once per lot, law-independent');
 });
 
 test('kerb ships on every seed, and never past its ceiling', () => {

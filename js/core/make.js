@@ -4,10 +4,10 @@
 // This runs at build time (tools/bake.mjs), not on tap — see that file for the measured
 // cost. Nothing in the shipped game imports it.
 //
-// Naive random scatter does not work here, and test/balance.mjs is the proof — of
-// ~40k lots tried per tier, thousands were unsolvable, and not one reached the top of
-// the ladder, because hard traffic jams are not random: they are chains of cars that
-// each pin the next. So growth replaces scatter:
+// Naive random scatter does not work at this cost, and test/scatter.mjs is the measurement:
+// 10k lots per tier, 22%–47% unsolvable, the rest a median of 1 drag, and only 42/1/6/0 per
+// 10000 reach their own band ceiling (kerb/lane/junction/gridlock). Hard jams are not random:
+// they are chains of cars that each pin the next. So growth replaces scatter:
 //
 //   start from the hero alone, then add one car at a time and re-measure with the BFS
 //   solver. A car is kept only if the measured shortest route got *strictly longer*.
@@ -18,7 +18,8 @@
 // stop at. The band you play in is a move count the solver agreed to, not an opinion.
 
 import { compile, occupancy, validate } from './lot.js';
-import { solve, census } from './solve.js';
+import { solve, solveWeighted, census } from './solve.js';
+import { CELL, witness } from './law.js';
 import { rngFrom } from './rng.js';
 
 // A lot under construction, in the shape `candidateCells` wants. `s` is the spec the
@@ -168,9 +169,27 @@ function grow(seed, tier, stats) {
   }
   if (rating.moves < tier.min) { hit(cars.length < tier.cars[0] ? 'tooFewCars' : 'underBand'); return null; }
   const c = census(board, tier.census || 200000);
+  // The lot ships with both counting laws measured, and the cell count is taken on two
+  // independent roads (BFS over single-cell steps, then Dijkstra over the drag graph billed
+  // per cell). The ladder is still climbed in drags — that is the classic card convention
+  // the bands are written against — but the second number has to be as good as the first,
+  // because the screen prints it as a fact about the same position.
+  const cellSearch = solve(board, { law: CELL, limit: tier.cellSearch || 200000 });
+  if (!cellSearch.ok) throw new Error(`${tier.key}: the drag law solved a lot the cell law could not`);
+  const cellWeighted = solveWeighted(board, { law: CELL, limit: tier.cellSearch || 200000 });
+  if (!cellWeighted.ok || cellWeighted.moves !== cellSearch.moves) {
+    throw new Error(`${tier.key}: cell par ${cellSearch.moves} disagrees with the weighted road (${cellWeighted.moves})`);
+  }
+  const w = witness(board.comp);
+  if (w.drag > rating.moves || w.cell > cellSearch.moves) {
+    throw new Error(`${tier.key}: the hand-countable witness (${w.drag}/${w.cell}) exceeds the measured par ${rating.moves}/${cellSearch.moves}`);
+  }
   return {
     spec: board,
-    rating: { moves: rating.moves, states: c.states, depth: c.depth, cars: cars.length, probes: last },
+    rating: {
+      moves: rating.moves, movesCell: cellSearch.moves, states: c.states, depth: c.depth,
+      cars: cars.length, probes: last, witness: w,
+    },
     path: rating.path,
     seed,
     tier: tier.key,

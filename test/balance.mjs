@@ -29,14 +29,21 @@ for (const tier of tiers) {
     if (lot) found.push(lot);
   }
   const moves = found.map((f) => f.rating.moves).sort((a, b) => a - b);
+  const cells = found.map((f) => f.rating.movesCell).sort((a, b) => a - b);
+  const ratios = found.map((f) => f.rating.movesCell / f.rating.moves).sort((a, b) => a - b);
   const states = found.map((f) => f.rating.states).sort((a, b) => a - b);
   const cars = found.map((f) => f.rating.cars).sort((a, b) => a - b);
+  const slack = found.map((f) => f.rating.movesCell - f.rating.witness.cell).sort((a, b) => a - b);
   ms.sort((a, b) => a - b);
+  const triple = (list, fmt = String) => (list.length ? `${fmt(pct(list, 0))}/${fmt(pct(list, 0.5))}/${fmt(pct(list, 1))}` : '—');
   rows.push({
     tier: tier.key,
     band: `${tier.min}-${tier.max}`,
     accepted: `${found.length}/${N}`,
-    moves: moves.length ? `${pct(moves, 0)}/${pct(moves, 0.5)}/${pct(moves, 1)}` : '—',
+    moves: triple(moves),
+    cells: triple(cells),
+    ratio: triple(ratios, (v) => v.toFixed(2)),
+    slack: triple(slack),
     cars: cars.length ? `${pct(cars, 0)}/${pct(cars, 1)}` : '—',
     states: states.length ? `${pct(states, 0)}/${pct(states, 0.5)}/${pct(states, 1)}` : '—',
     ms: ms.length ? `${pct(ms, 0.5).toFixed(0)}/${ms[ms.length - 1].toFixed(0)}` : '—',
@@ -48,11 +55,13 @@ for (const tier of tiers) {
   });
 }
 
-const head = ['tier', 'band', 'accept', 'moves min/med/max', 'cars', 'states min/med/max', 'ms med/max', 'per-tier tallies'];
+const head = ['tier', 'band', 'accept', 'drags min/med/max', 'cells min/med/max', 'ratio', 'cell slack', 'ms med/max', 'per-tier tallies'];
 console.log(head.map((h, i) => h.padEnd(i < 2 ? 8 : 18)).join(' '));
 for (const r of rows) {
-  console.log([r.tier, r.band, r.accepted, r.moves, r.cars, r.states, r.ms, r.reject]
+  console.log([r.tier, r.band, r.accepted, r.moves, r.cells, r.ratio, r.slack, r.ms, r.reject]
     .map((v, i) => String(v).padEnd(i < 2 ? 8 : 18)).join(' '));
 }
 console.log(`\nsamples per tier: ${N}  (SAMPLES=… to change, TIERS=kerb,lane to subset)`);
-for (const r of rows) console.log(`${r.tier} moves, sorted: ${r.hist}`);
+console.log('`cells` is the same board measured in the second law; `ratio` is cells/drags and `cell slack`');
+console.log('is how far above the exit lane witness (js/core/law.js) the cell number lands.');
+for (const r of rows) console.log(`${r.tier} drags, sorted: ${r.hist}`);

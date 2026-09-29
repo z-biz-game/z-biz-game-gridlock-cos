@@ -1,7 +1,7 @@
 {
   "name": "gridlock",
-  "version": "1.0.0",
-  "description": "死锁车库 Gridlock — 浏览器原生 Rush Hour. 每关最少步数由广度优先搜索量出, 关卡在构建期生成并复验.",
+  "version": "1.1.0",
+  "description": "死锁车库 Gridlock — 浏览器原生 Rush Hour. 每关两个最少步数(滑步/格步), 各由两条独立搜索量出, 关卡在构建期生成并复验.",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,6 +10,7 @@
     "electron": "electron .",
     "bake": "node tools/bake.mjs",
     "balance": "node test/balance.mjs",
+    "scatter": "node test/scatter.mjs",
     "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
     "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
     "test": "npm run check && npm run unit",

@@ -15,6 +15,14 @@
 // (2,0) — which needs C slid two cells left, since (4,0) is the other end of its travel
 // and one cell of slack is not enough. Three drags, and no two: the hero is pinned the
 // whole time, so nothing else can be finished off early.
+//
+// Counted in cells instead, the same picture says six. The hero alone travels four (from
+// x=0 to x=4), A has to give up (2,2) which is one more, and A cannot go down — B owns
+// (2,4) and B has nowhere to be pushed out of column 2 — so A goes up, which costs C a
+// fifth cell. A's only free neighbour cell is (2,0), and C occupies it, so C's one cell to
+// the right is the sixth. Note that the three-drag route above bills seven cells: it moves
+// C two to the left. Both records are reachable at once (C one right, A up, hero four) and
+// that route is what the tests type out.
 
 export const CHAIN = {
   w: 6,

@@ -7,8 +7,8 @@
 # rasterization saturates the cores and, with no CDP client attached, the process will not
 # exit on its own. This game is 2D canvas, so plain headless Chrome is enough.
 #
-#   ./tools/verify.sh                       # node suites + @boot @play @routes @save @pointer
-#   SCENARIOS="pointer" ./tools/verify.sh   # one browser suite while editing the view
+#   ./tools/verify.sh                       # node suites + @boot @play @routes @save @law @pointer
+#   SCENARIOS="law" ./tools/verify.sh       # one browser suite while editing the panel
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 CDP_PORT=${CDP_PORT:-9340}
@@ -72,7 +72,7 @@ fi
 export CDP_PORT
 export BASE_URL=$BASE
 node tools/playtest.mjs open "$BASE" | head -3
-# The pool is 30 kB of measurement and the shell resolves a route before it reports a
+# The pool is 38 kB of measurement and the shell resolves a route before it reports a
 # state, so wait on window.gridlock rather than on a timer.
 BOOT=""
 for i in $(seq 1 60); do
@@ -82,7 +82,7 @@ done
 echo "boot lot: $BOOT"
 [ "$BOOT" = "nope" ] && { echo "window.gridlock never appeared at $BASE" >&2; exit 5; }
 
-for s in ${SCENARIOS:-boot play routes save pointer}; do
+for s in ${SCENARIOS:-boot play routes save law pointer}; do
   echo "=== @$s ==="
   node tools/playtest.mjs eval "@$s" nonav 2>&1 | python3 -c '
 import sys, json
