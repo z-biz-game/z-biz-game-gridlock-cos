@@ -1,6 +1,9 @@
 /* 死锁车库 — one stylesheet, no framework, no build step.
    Layout: board on the left, readout on the right; stacked under 820px so a phone gets a
-   full-width lot and a short panel. */
+   full-width lot and a short panel.
+   Two rules this file keeps for iOS: every interactive control is at least 44px on its
+   touch axis, and every edge that a notch can cover is padded with env(safe-area-inset-*)
+   (index.html ships viewport-fit=cover, without which env() is always 0). */
 
 :root {
   --bg: #101217;
@@ -14,6 +17,11 @@
   --cyan: #78dcff;
   --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", monospace;
   --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --tap: 44px; /* the iOS human-interface minimum, one token so nothing drifts back down */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,10 +30,20 @@ body {
   background: radial-gradient(120% 100% at 50% 0%, var(--bg-2), var(--bg) 60%);
   color: var(--ink); font-family: var(--mono); -webkit-font-smoothing: antialiased;
   overflow: hidden; user-select: none; cursor: default;
+  display: flex; flex-direction: column;
 }
-button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button {
+  font: inherit; color: inherit; background: none; border: none; cursor: pointer;
+  min-height: var(--tap); min-width: var(--tap);
+  padding: 10px 12px; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
-.topbar { display: flex; align-items: center; gap: 18px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.topbar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: calc(10px + var(--sat)) calc(18px + var(--sar)) 10px calc(18px + var(--sal));
+  border-bottom: 1px solid var(--line);
+}
 .brand { font-size: 16px; letter-spacing: 0.06em; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
 .brand small { color: var(--ink-dim); font-size: 10px; letter-spacing: 0.28em; }
 .brand-mark { color: var(--amber); }
@@ -33,16 +51,33 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .modes button { padding: 6px 14px; font-size: 13px; color: var(--ink-dim); border: 1px solid transparent; border-radius: 6px; }
 .modes button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
 .modes button[aria-current="true"] { color: var(--amber); border-color: rgba(224, 166, 60, 0.4); background: rgba(224, 166, 60, 0.08); }
-.totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
+.tools { display: flex; gap: 4px; margin-left: auto; }
+.tools button {
+  font-size: 12px; letter-spacing: 0.04em; color: var(--ink-dim);
+  border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.03);
+  padding: 6px 10px; min-width: 52px;
+}
+.tools button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
+.tools button[aria-pressed="true"] { color: var(--amber); border-color: rgba(224, 166, 60, 0.5); background: rgba(224, 166, 60, 0.1); }
+.tools #sound[aria-pressed="true"] { color: var(--ink-dim); text-decoration: line-through; }
+.totals { font-size: 12px; color: var(--ink-dim); }
 .totals b { color: var(--amber); font-weight: 600; }
 
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; padding: 18px; height: calc(100% - 53px); }
+.stage {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px;
+  padding: 18px calc(18px + var(--sar)) calc(18px + var(--sab)) calc(18px + var(--sal));
+}
 .board { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
 #lot { width: 100%; height: 100%; min-height: 0; display: block; touch-action: none; }
-.hint-line { min-height: 20px; font-size: 12px; color: var(--ink-dim); text-align: center; }
+.hint-line { min-height: 22px; font-size: 12px; color: var(--ink-dim); text-align: center; }
 .hint-line b { color: var(--cyan); font-weight: 600; }
 
-.panel { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow: auto; }
+.panel {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  padding: 16px 16px calc(16px + var(--sab)); display: flex; flex-direction: column; gap: 14px; overflow: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
 .crumbs { font-size: 12px; color: var(--ink-dim); letter-spacing: 0.04em; }
 .crumbs b { display: block; font-size: 20px; color: var(--ink); font-weight: 600; margin-top: 2px; }
 .crumbs .band { color: var(--amber); }
@@ -68,7 +103,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .shelf { display: flex; flex-wrap: wrap; gap: 6px; }
 .shelf .tier { width: 100%; font-size: 11px; color: var(--ink-dim); margin-top: 6px; letter-spacing: 0.1em; }
-.shelf button { min-width: 34px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
+.shelf button { min-width: var(--tap); padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
 .shelf button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
 .shelf button.done { color: var(--amber); border-color: rgba(224, 166, 60, 0.35); }
 .shelf button.perfect { color: var(--cyan); border-color: rgba(120, 220, 255, 0.35); }
@@ -77,14 +112,20 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .shelf .wide { width: 100%; }
 
 .about { font-size: 11px; color: var(--ink-dim); line-height: 1.7; border-top: 1px solid var(--line); padding-top: 10px; }
-.about summary { cursor: pointer; letter-spacing: 0.08em; }
+.about summary { cursor: pointer; letter-spacing: 0.08em; min-height: var(--tap); display: flex; align-items: center; }
 .about code { color: var(--amber); font-size: 10px; }
 .about .save { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
-.about #wipe { font-size: 10px; padding: 5px 9px; color: var(--ink-dim); border-color: rgba(224, 166, 60, 0.4); }
+.about #wipe { font-size: 10px; padding: 5px 9px; color: var(--ink-dim); border: 1px solid rgba(224, 166, 60, 0.4); border-radius: 7px; }
+
+.veil { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: rgba(12, 14, 18, 0.78); backdrop-filter: blur(2px); border-radius: 12px; text-align: center; }
+.veil[hidden] { display: none; }
+.veil p { font-size: 22px; letter-spacing: 0.1em; color: var(--amber); }
+.veil p span { display: block; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-dim); margin-top: 6px; }
+.veil button { font-size: 13px; border: 1px solid rgba(224, 166, 60, 0.5); border-radius: 10px; padding: 10px 22px; color: var(--amber); background: rgba(224, 166, 60, 0.08); }
 
 .curtain { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 14, 18, 0.72); backdrop-filter: blur(3px); border-radius: 12px; }
 .curtain[hidden] { display: none; }
-.curtain-card { width: min(300px, 86%); border: 1px solid rgba(224, 166, 60, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; text-align: center; }
+.curtain-card { width: min(300px, 86%); border: 1px solid rgba(224, 166, 60, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; text-align: center; animation: rise 260ms ease-out; }
 .stars { font-size: 26px; letter-spacing: 0.2em; color: var(--amber); }
 .curtain-card h2 { font-size: 19px; margin: 6px 0 8px; }
 .tally { font-size: 12px; color: var(--ink-dim); line-height: 1.8; }
@@ -93,13 +134,43 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .curtain-actions button { flex: 1; padding: 10px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; }
 .curtain-actions .primary { border-color: rgba(224, 166, 60, 0.6); color: var(--amber); background: rgba(224, 166, 60, 0.1); }
 
-.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); font-size: 12px; color: var(--amber); }
+.modal { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal)); background: rgba(8, 10, 13, 0.82); backdrop-filter: blur(4px); }
+.modal[hidden] { display: none; }
+.modal-card { width: min(560px, 100%); max-height: 100%; overflow: auto; border: 1px solid rgba(224, 166, 60, 0.3); border-radius: 14px; background: var(--bg-2); padding: 22px; animation: rise 220ms ease-out; }
+.modal-card h2 { font-size: 17px; color: var(--amber); letter-spacing: 0.04em; margin-bottom: 12px; }
+.howto { list-style: none; counter-reset: step; display: grid; gap: 10px; font-size: 12.5px; line-height: 1.75; color: var(--ink-dim); }
+.howto li { counter-increment: step; padding-left: 28px; position: relative; }
+.howto li::before { content: counter(step); position: absolute; left: 0; top: 1px; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid rgba(224, 166, 60, 0.4); border-radius: 6px; font-size: 10px; color: var(--amber); }
+.howto b { color: var(--ink); font-weight: 600; }
+.keys { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.9; color: var(--ink-dim); }
+.keys b { color: var(--amber); letter-spacing: 0.08em; }
+.modal-actions { margin-top: 18px; display: flex; justify-content: flex-end; }
+.modal-actions .primary { border: 1px solid rgba(224, 166, 60, 0.6); border-radius: 10px; padding: 10px 20px; font-size: 13px; color: var(--amber); background: rgba(224, 166, 60, 0.1); }
+
+.toast { position: fixed; left: 50%; bottom: calc(26px + var(--sab)); transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); font-size: 12px; color: var(--amber); animation: rise 180ms ease-out; }
 .toast[hidden] { display: none; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.toast { transform: translate(-50%, 0); }
+
+/* reduceMotion 的另一半：JS 里关掉画布上的脉冲与滑行（js/view.js），这一半管 DOM。
+   遮罩/卡片/吐司全部退化为直接出现的静图，不做位移与淡入。 */
+@media (prefers-reduced-motion: reduce) {
+  .curtain-card, .modal-card, .toast { animation: none; }
+  .veil, .curtain, .modal { backdrop-filter: none; }
+  button { transition: none; }
+}
 
 @media (max-width: 820px) {
   body { overflow: auto; }
-  .stage { grid-template-columns: 1fr; height: auto; }
+  .stage { grid-template-columns: 1fr; flex: none; height: auto; }
   .board { height: 58vh; min-height: 320px; }
-  .topbar { flex-wrap: wrap; gap: 10px; }
-  .totals { margin-left: 0; width: 100%; }
+  .topbar { gap: 8px 10px; padding-bottom: 8px; }
+  .brand { font-size: 15px; }
+  .modes { order: 3; width: 100%; }
+  .modes button { flex: 1; }
+  .tools { margin-left: auto; order: 2; }
+  .totals { margin-left: 0; width: 100%; order: 4; }
+  .controls { grid-template-columns: repeat(4, 1fr); }
+  .controls button { font-size: 12px; }
 }

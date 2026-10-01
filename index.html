@@ -4,8 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14161a">
+<meta name="color-scheme" content="dark">
 <meta name="description" content="死锁车库：把主角车开出停车场。每一关的最少步数都是广度优先搜索量出来的。">
-<link rel="icon" href="data:,">
+<meta property="og:type" content="website">
+<meta property="og:title" content="死锁车库 · GRIDLOCK">
+<meta property="og:description" content="把琥珀色的主角车开出停车场。每关两个最少步数，各由两条独立搜索路量出来才对账发行。">
+<meta property="og:image" content="assets/img/og-gridlock.png">
+<meta property="og:locale" content="zh_CN">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GRIDLOCK">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>死锁车库 · GRIDLOCK</title>
 <link rel="stylesheet" href="css/game.css">
 </head>
@@ -17,6 +31,12 @@
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
   </nav>
+  <nav class="tools" id="tools" aria-label="声音与画面开关">
+    <button type="button" id="sound" aria-pressed="false" title="静音开关（M）">声音 开</button>
+    <button type="button" id="pause" aria-pressed="false" title="暂停（P 或 空格）">暂停</button>
+    <button type="button" id="fullscreen" aria-pressed="false" title="全屏（F）">全屏</button>
+    <button type="button" id="help" title="玩法说明（H 或 ?）">玩法</button>
+  </nav>
   <p class="totals" id="totals"></p>
 </header>
 
@@ -24,6 +44,10 @@
   <section class="board">
     <canvas id="lot" aria-label="停车场平面图"></canvas>
     <p class="hint-line" id="hintline"></p>
+    <div class="veil" id="pausedveil" hidden>
+      <p>已暂停<span>按 P 或点「继续」接着开</span></p>
+      <button type="button" id="resume">继续</button>
+    </div>
     <div class="curtain" id="curtain" hidden>
       <div class="curtain-card">
         <p class="stars" id="stars"></p>
@@ -58,7 +82,31 @@
   </aside>
 </main>
 
+<div class="modal" id="helpcard" hidden role="dialog" aria-modal="true" aria-labelledby="helptitle">
+  <div class="modal-card">
+    <h2 id="helptitle">玩法说明 · 怎么把车开出去</h2>
+    <ol class="howto">
+      <li><b>只认一辆车</b>：横停在最后一排的<b>琥珀色</b>主角车。把它一路拖到右边的出口车道，这关就通了。</li>
+      <li><b>车只能顺着自己朝向滑</b>：横车左右滑，竖车上下滑，滑一格算一格，撞上车或水泥墩就停。</li>
+      <li><b>想让路，就得挪开压住通道的那些车</b>：它们也被自己的朝向和彼此卡住——这就是「死锁」。</li>
+      <li><b>两个最少步数都是量出来的</b>：滑步（一次拖动算一步）与格步（滑一格算一步），同一路线两本账，右栏「最少」那一格就是这一关的下界。</li>
+      <li><b>提示不代打</b>：按口径高亮下一辆该动的车并报出方向与格数，用了几次记在成绩里。</li>
+    </ol>
+    <p class="keys"><b>键盘</b> Enter/空格 开始或继续 · P 暂停 · R 重开 · U 撤销 · H 提示 · M 静音 · F 全屏 · ? 本说明 · Esc 关闭</p>
+    <div class="modal-actions"><button type="button" id="helpclose" class="primary">知道了，开车</button></div>
+  </div>
+</div>
+
 <p class="toast" id="toast" hidden></p>
+<script>
+// file:// 下没有 SW 可注册（Chrome 直接拒绝并留一条未捕获异常），所以整段按协议分流。
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    if (!navigator.serviceWorker) return;
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* 装不上就在线跑 */ });
+  });
+}
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
