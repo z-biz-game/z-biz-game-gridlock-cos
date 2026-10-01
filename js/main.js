@@ -453,7 +453,7 @@ window.addEventListener('keydown', (ev) => {
     else if (!el.curtain.hidden) el.curtain.hidden = true;
     else if (app.paused) setPaused(false);
   } else if (k === 'u') el.undo.click();
-  else if (k === 'h' && !ev.shiftKey) el.hint.click();
+  else if (k === 'h') (ev.shiftKey ? openHelp(!app.helpOpen) : el.hint.click());
   else if (k === 'r') el.restart.click();
   else if (k === 'p') setPaused(!app.paused);
   else if (k === 'space') { if (!app.helpOpen) setPaused(!app.paused); }

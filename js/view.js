@@ -324,10 +324,29 @@ export function createView(canvas, { onCommit } = {}) {
 
   loadTextures();
 
-  canvas.addEventListener('pointerdown', down);
-  canvas.addEventListener('pointermove', move);
-  canvas.addEventListener('pointerup', up);
-  canvas.addEventListener('pointercancel', up);
+  // pointerdown 优先；老 iOS Safari / 桌面没有 PointerEvent 时回落到 touch + mouse。
+  // 两条通道共用同一套 handler，事件里只取 clientX/clientY 与 identifier，
+  // 坐标一律经 getBoundingClientRect 换算，CSS 缩放过的画布不会点 A 打 B。
+  if (typeof window.PointerEvent !== 'undefined') {
+    canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+  } else {
+    const first = (ev) => (ev.touches && ev.touches.length ? ev.touches[0]
+      : (ev.changedTouches && ev.changedTouches.length ? ev.changedTouches[0] : ev));
+    const wrap = (fn) => (ev) => {
+      const t = first(ev);
+      fn({ clientX: t.clientX, clientY: t.clientY, pointerId: t.identifier || 0, preventDefault: () => ev.preventDefault() });
+    };
+    canvas.addEventListener('mousedown', wrap(down));
+    canvas.addEventListener('mousemove', wrap(move));
+    canvas.addEventListener('mouseup', wrap(up));
+    canvas.addEventListener('touchstart', wrap(down), { passive: false });
+    canvas.addEventListener('touchmove', wrap(move), { passive: false });
+    canvas.addEventListener('touchend', wrap(up), { passive: false });
+    canvas.addEventListener('touchcancel', wrap(up), { passive: false });
+  }
 
   return {
     attach(next) {
