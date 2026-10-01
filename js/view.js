@@ -18,6 +18,23 @@ const HERO = '#e0a63c';
 const HERO_DARK = '#a97721';
 const GLOW = 'rgba(224, 166, 60, 0.55)';
 
+// The two bitmaps the lot is actually paved with, generated in-repo by
+// assets/gen/make_art.py and precached by sw.js. Flat colours stay as the fallback so a
+// browser without them still draws the same lot.
+const TEXTURES = {
+  asphalt: 'assets/img/tex-asphalt-256.png',
+  concrete: 'assets/img/tex-concrete-256.png',
+};
+
+function reducedMotionQuery() {
+  if (typeof window === 'undefined' || !window.matchMedia) return null;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)');
+  } catch (err) {
+    return null;
+  }
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -38,6 +55,38 @@ export function createView(canvas, { onCommit } = {}) {
   let escape = 0; // 0..1, the hero leaving the lot
   let raf = 0;
   let last = 0;
+  // animClock 是本文件唯一还在直接吃帧 dt 的积分分钟：提示脉冲环与出口微光都按它取值。
+  // 它必须写成 `+= dt`（而不是 `+= 1/60`），否则同一虚拟时长在 30Hz 与 120Hz 下会数出两个
+  // 不同的秒数 —— 派工单 §3 的阴性对照就钉在这一行上。
+  let animClock = 0;
+  let paused = false;
+  let frames = 0;
+  const motionQuery = reducedMotionQuery();
+  let motionOverride = null; // null = 跟随系统；true/false = 面板上的动效开关
+  const patterns = { asphalt: null, concrete: null };
+
+  const reducedMotion = () => (motionOverride === null
+    ? !!(motionQuery && motionQuery.matches)
+    : motionOverride);
+
+  function loadTextures() {
+    if (typeof Image !== 'undefined' && typeof canvas.ownerDocument !== 'undefined') {
+      for (const key of Object.keys(TEXTURES)) {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            patterns[key] = ctx.createPattern(img, 'repeat');
+          } catch (err) {
+            patterns[key] = null;
+          }
+          draw();
+        };
+        img.src = TEXTURES[key];
+      }
+      return;
+    }
+    if (typeof Image === 'undefined') return; // node / 探针沙箱：留平色
+  }
 
   function measure() {
     const box = canvas.getBoundingClientRect();
@@ -80,7 +129,7 @@ export function createView(canvas, { onCommit } = {}) {
   }
 
   function down(ev) {
-    if (!game || game.done) return;
+    if (!game || game.done || paused) return;
     const p = localPoint(ev);
     const g = grab(game, Math.floor((p.x - geom.ox) / geom.cell), Math.floor((p.y - geom.oy) / geom.cell));
     if (!g) return;
@@ -170,11 +219,19 @@ export function createView(canvas, { onCommit } = {}) {
       ctx.fill();
     }
     if (hint && hint.car === i) {
-      const t = (performance.now() % 900) / 900;
-      ctx.strokeStyle = `rgba(120, 220, 255, ${(0.85 - t * 0.55).toFixed(3)})`;
-      ctx.lineWidth = 2 + t * 4;
-      roundRect(ctx, x - 3 - t * 5, y - 3 - t * 5, w + 6 + t * 10, h + 6 + t * 10, Math.round(cell * 0.24));
-      ctx.stroke();
+      if (reducedMotion()) {
+        // 静图口径：不脉动，只留一圈固定描边——高亮这件事本身不需要动画也成立。
+        ctx.strokeStyle = 'rgba(120, 220, 255, 0.9)';
+        ctx.lineWidth = 3;
+        roundRect(ctx, x - 5, y - 5, w + 10, h + 10, Math.round(cell * 0.24));
+        ctx.stroke();
+      } else {
+        const t = (animClock % 0.9) / 0.9;
+        ctx.strokeStyle = `rgba(120, 220, 255, ${(0.85 - t * 0.55).toFixed(3)})`;
+        ctx.lineWidth = 2 + t * 4;
+        roundRect(ctx, x - 3 - t * 5, y - 3 - t * 5, w + 6 + t * 10, h + 6 + t * 10, Math.round(cell * 0.24));
+        ctx.stroke();
+      }
     }
   }
 
@@ -186,10 +243,10 @@ export function createView(canvas, { onCommit } = {}) {
     const bw = cell * comp.w;
     const bh = cell * comp.h;
 
-    ctx.fillStyle = CURB;
+    ctx.fillStyle = patterns.concrete || CURB;
     roundRect(ctx, ox - 8, oy - 8, bw + 16 + GATE, bh + 16, 14);
     ctx.fill();
-    ctx.fillStyle = ASPHALT;
+    ctx.fillStyle = patterns.asphalt || ASPHALT;
     roundRect(ctx, ox - 2, oy - 2, bw + 4, bh + 4, 8);
     ctx.fill();
 
@@ -213,7 +270,8 @@ export function createView(canvas, { onCommit } = {}) {
 
     // The gate: a lit lane plus chevrons pointing out of the lot.
     const gy = oy + comp.exitRow * cell;
-    ctx.fillStyle = 'rgba(224, 166, 60, 0.12)';
+    const shimmer = reducedMotion() ? 0.12 : 0.12 + 0.05 * (0.5 + 0.5 * Math.sin(animClock * 2.2));
+    ctx.fillStyle = `rgba(224, 166, 60, ${shimmer.toFixed(3)})`;
     ctx.fillRect(ox + bw, gy, GATE, cell);
     ctx.strokeStyle = GLOW;
     ctx.lineWidth = 2.5;
@@ -247,16 +305,24 @@ export function createView(canvas, { onCommit } = {}) {
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
+    frames += 1;
     const dt = Math.min(64, now - (last || now));
     last = now;
+    if (paused) return; // 暂停 = 仿真不推进：时钟、离场补间、提示寿命全部冻住
+    animClock += dt / 1000;
     const escaping = game && game.done && escape < 1;
-    if (escaping) escape = Math.min(1, escape + dt / 420);
-    if (hint && now >= hint.until) {
+    if (escaping) {
+      // reduceMotion 下主角车不做离场滑行，直接定格在门外——结果同一张图，少一段动效。
+      escape = reducedMotion() ? 1 : Math.min(1, escape + dt / 420);
+    }
+    if (hint && animClock >= hint.until) {
       hint = null;
       draw();
     }
     if (escaping || drag || hint) draw();
   }
+
+  loadTextures();
 
   canvas.addEventListener('pointerdown', down);
   canvas.addEventListener('pointermove', move);
@@ -270,6 +336,15 @@ export function createView(canvas, { onCommit } = {}) {
       hint = null;
       escape = 0;
       measure();
+    },
+    // 重开/换关要把时钟与补间一起复位：只 reset 模型而漏掉这里，下一局会从上一局的
+    // 离场进度与脉冲相位开始。
+    resetClocks() {
+      drag = null;
+      hint = null;
+      escape = 0;
+      animClock = 0;
+      last = 0;
     },
     detach() {
       game = null;
@@ -293,8 +368,22 @@ export function createView(canvas, { onCommit } = {}) {
     },
     measure,
     redraw: draw,
+    setPaused(on) {
+      paused = !!on;
+      last = 0; // 恢复时别把暂停那段时间当成一帧补上
+      if (!paused) draw();
+      return paused;
+    },
+    get paused() { return paused; },
+    setMotion(on) {
+      motionOverride = on === null ? null : !!on;
+      draw();
+      return reducedMotion();
+    },
+    get reducedMotion() { return reducedMotion(); },
+    get clock() { return { animClock, escape, frames }; },
     showHint(car) {
-      hint = { car, until: performance.now() + 2400 };
+      hint = { car, until: animClock + 2.4 };
       draw();
     },
     start() {

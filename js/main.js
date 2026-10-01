@@ -10,6 +10,7 @@ import {
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
 import { createView } from './view.js';
+import { createAudio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -19,6 +20,9 @@ const el = {
   verdict: $('verdict'), tally: $('tally'), undo: $('undo'), hint: $('hint'),
   restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
   toast: $('toast'), canvas: $('lot'), wipe: $('wipe'),
+  sound: $('sound'), pause: $('pause'), resume: $('resume'), veil: $('pausedveil'),
+  fullscreen: $('fullscreen'), help: $('help'), helpcard: $('helpcard'), helpclose: $('helpclose'),
+  tools: $('tools'),
 };
 
 const LEVELS = ALL.length;
@@ -34,7 +38,15 @@ const app = {
   // Which of the lot's two certified numbers the grade is read against. Both ledgers are
   // kept whatever this says (js/core/game.js), so switching never invalidates a run.
   law: store.law || DRAG,
+  sound: store.sound !== false,
+  paused: false,
+  helpOpen: false,
 };
+
+const audio = createAudio({
+  isMuted: () => !app.sound,
+  reducedMotion: () => view.reducedMotion,
+});
 
 function lawName() {
   return lawOf(app.law).label;
@@ -206,9 +218,11 @@ function render() {
 function commit(car, d) {
   const moved = slide(app.game, car, d);
   if (!moved) {
+    audio.play('blocked');
     view.redraw();
     return false;
   }
+  audio.play('slide');
   if (app.game.done) finish();
   else {
     view.redraw();
@@ -230,6 +244,7 @@ function finish() {
     store.unlock(Math.max(store.unlocked, app.index + 1));
     nextIndex = app.index < LEVELS ? app.index + 1 : 0;
   }
+  audio.win();
   const gr = grade(g, app.law);
   const other = app.law === CELL ? DRAG : CELL;
   const bestNow = app.law === CELL ? rec.bestCell : rec.best;
@@ -297,6 +312,7 @@ el.modes.addEventListener('click', (ev) => {
 
 el.undo.addEventListener('click', () => {
   if (undo(app.game)) {
+    audio.play('undo');
     view.redraw();
     renderCrumbs();
     if (app.game.moves === 0) say('回到起点');
@@ -310,6 +326,7 @@ el.hint.addEventListener('click', () => {
     return;
   }
   app.hints++;
+  audio.play('hint');
   view.showHint(h.car);
   const horiz = app.game.comp.axis[h.car] === 0;
   const fwd = horiz ? '右' : '下';
@@ -332,13 +349,81 @@ function restart() {
   reset(app.game);
   app.hints = 0;
   el.curtain.hidden = true;
-  view.attach(app.game); // resets the escape animation as well as the cars
+  view.attach(app.game);
+  view.resetClocks(); // 时钟、离场补间、提示脉冲相位一起归零，不只是模型
+  audio.play('tap');
   render();
   say('回到起点');
 }
 
+// 暂停的口径：仿真与动画一起冻住（js/view.js 的 frame() 在 paused 时直接 return，
+// animClock / escape / hint 寿命都不再推进），画布输入挡掉，恢复后盘面一格没变。
+function setPaused(on) {
+  app.paused = !!on;
+  view.setPaused(app.paused);
+  el.veil.hidden = !app.paused;
+  el.pause.setAttribute('aria-pressed', String(app.paused));
+  el.pause.textContent = app.paused ? '继续' : '暂停';
+  if (app.paused) say('暂停中 —— 盘面冻住，按 P 继续');
+  return app.paused;
+}
+
+function setSound(on) {
+  app.sound = store.setSound(on);
+  audio.setMuted(!app.sound); // 真停 AudioContext，不是把 gain 拧到 0
+  el.sound.setAttribute('aria-pressed', String(!app.sound));
+  el.sound.textContent = app.sound ? '声音 开' : '声音 关';
+  return app.sound;
+}
+
+function openHelp(on) {
+  app.helpOpen = !!on;
+  el.helpcard.hidden = !app.helpOpen;
+  el.help.setAttribute('aria-pressed', String(app.helpOpen));
+  if (app.helpOpen) store.markHelpSeen();
+  else if (!app.paused) el.canvas.focus && el.canvas.focus();
+  return app.helpOpen;
+}
+
+function toggleFullscreen() {
+  const node = document.documentElement;
+  const cur = document.fullscreenElement || document.webkitFullscreenElement;
+  if (cur) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) Promise.resolve(exit.call(document)).catch(() => { /* denied */ });
+    return false;
+  }
+  const req = node.requestFullscreen || node.webkitRequestFullscreen;
+  if (!req) {
+    toast('这个浏览器不支持全屏');
+    return false;
+  }
+  Promise.resolve(req.call(node)).catch(() => toast('全屏被浏览器挡下了'));
+  return true;
+}
+
+function syncFullscreen() {
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  el.fullscreen.setAttribute('aria-pressed', String(on));
+  el.fullscreen.textContent = on ? '退出全屏' : '全屏';
+  return on;
+}
+
 el.restart.addEventListener('click', restart);
-el.share.addEventListener('click', shareLink);
+el.share.addEventListener('click', () => { audio.play('tap'); shareLink(); });
+el.pause.addEventListener('click', () => { audio.play('tap'); setPaused(!app.paused); });
+el.resume.addEventListener('click', () => { audio.play('tap'); setPaused(false); });
+el.sound.addEventListener('click', () => {
+  const on = !app.sound;
+  setSound(on); // 先落状态：静音态点它不该有声音
+  if (on) audio.toggle();
+});
+el.fullscreen.addEventListener('click', () => { audio.play('tap'); toggleFullscreen(); });
+el.help.addEventListener('click', () => { audio.play('tap'); openHelp(!app.helpOpen); });
+el.helpclose.addEventListener('click', () => { audio.play('tap'); openHelp(false); });
+document.addEventListener('fullscreenchange', syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+el.helpcard.addEventListener('click', (ev) => { if (ev.target === el.helpcard) openHelp(false); });
 el.again.addEventListener('click', restart);
 el.next.addEventListener('click', () => go(`#/c/${Math.min(LEVELS, app.index + 1)}`));
 
@@ -362,18 +447,40 @@ window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => view.measure());
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const k = ev.key.toLowerCase();
-  if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
-  else if (k === 'u') el.undo.click();
-  else if (k === 'h') el.hint.click();
+  const k = ev.key === ' ' ? 'space' : ev.key.toLowerCase();
+  if (k === 'escape') {
+    if (app.helpOpen) openHelp(false);
+    else if (!el.curtain.hidden) el.curtain.hidden = true;
+    else if (app.paused) setPaused(false);
+  } else if (k === 'u') el.undo.click();
+  else if (k === 'h' && !ev.shiftKey) el.hint.click();
   else if (k === 'r') el.restart.click();
+  else if (k === 'p') setPaused(!app.paused);
+  else if (k === 'space') { if (!app.helpOpen) setPaused(!app.paused); }
+  else if (k === 'm') setSound(!app.sound);
+  else if (k === 'f') toggleFullscreen();
+  else if (k === '?' || k === '/') openHelp(!app.helpOpen);
+  else if (k === 'enter') {
+    // 没有标题屏可"开始"，所以 Enter 的语义是把手上的局面推进下去：
+    // 教学开着就关掉，赢了就下一关，暂停就继续。
+    if (app.helpOpen) openHelp(false);
+    else if (!el.curtain.hidden) el.next.hidden ? el.again.click() : el.next.click();
+    else if (app.paused) setPaused(false);
+  } else return;
+  ev.preventDefault();
 });
 
 view.start();
+// 存档里的动效偏好：'auto' 跟随系统，'on'/'off' 是显式覆盖。
+view.setMotion(store.motion === 'auto' ? null : store.motion === 'on');
+setSound(store.sound !== false);
+syncFullscreen();
 // Deliberately not paused on visibilitychange: the escape animation and the win card are
 // driven from the same loop, and a tab that reports itself hidden (headless Chrome does)
 // must still be able to finish a lot.
 apply();
+// 首启引导：只在没看过的时候自己弹出来，看过之后由「玩法」按钮与 ? / H 唤回。
+if (!store.helpSeen) openHelp(true);
 
 window.gridlock = {
   version: 2,
@@ -394,6 +501,17 @@ window.gridlock = {
       parNow: app.lot && parOf(app.lot, app.law),
       hints: app.hints,
       done: !!(app.game && app.game.done),
+      paused: app.paused,
+      sound: app.sound,
+      muted: !app.sound,
+      helpOpen: app.helpOpen,
+      motion: store.motion,
+      reducedMotion: view.reducedMotion,
+      animClock: view.clock.animClock,
+      escape: view.clock.escape,
+      frames: view.clock.frames,
+      dropped: store.dropped,
+      audio: audio.state,
       unlocked: store.unlocked,
       solved: Object.values(store.records).filter((r) => r.solved).length,
       curtain: !el.curtain.hidden,
@@ -420,6 +538,16 @@ window.gridlock = {
     for (const m of path || []) commit(m.car, m.delta);
     return app.game.moves;
   },
+  setMotion(mode) {
+    const next = store.setMotion(mode);
+    view.setMotion(next === 'auto' ? null : next === 'on');
+    return { stored: next, reduced: view.reducedMotion };
+  },
+  setSound,
+  setPaused,
+  toggleFullscreen,
+  openHelp,
+  audio,
   setLaw(key) {
     app.law = store.setLaw(key);
     renderLaws();
