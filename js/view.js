@@ -37,6 +37,13 @@ export function createView(canvas, { onCommit } = {}) {
   let hint = null; // { car, until }
   let escape = 0; // 0..1, the hero leaving the lot
   let raf = 0;
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 提示环的 t = (now % 900) / 900 喂给线宽（2 + t*4）和透明度（0.85 - t*0.55），
+  // 是一段纯装饰的呼吸。减弱动效下把 t 钉在 0.5：环还在、还是那辆车、亮度照旧，
+  // 只是不再一涨一落 —— 提示是信息，涨落是装饰。
+  let reduceMotion = false;
+  const ringPhase = () => (reduceMotion ? 0.5 : (performance.now() % 900) / 900);
+
   let last = 0;
 
   function measure() {
@@ -170,7 +177,7 @@ export function createView(canvas, { onCommit } = {}) {
       ctx.fill();
     }
     if (hint && hint.car === i) {
-      const t = (performance.now() % 900) / 900;
+      const t = ringPhase();
       ctx.strokeStyle = `rgba(120, 220, 255, ${(0.85 - t * 0.55).toFixed(3)})`;
       ctx.lineWidth = 2 + t * 4;
       roundRect(ctx, x - 3 - t * 5, y - 3 - t * 5, w + 6 + t * 10, h + 6 + t * 10, Math.round(cell * 0.24));
@@ -291,6 +298,16 @@ export function createView(canvas, { onCommit } = {}) {
       const p = toClient(horiz ? at : comp.cross[i] + 0.5, horiz ? comp.cross[i] + 0.5 : at);
       return { ...p, horiz };
     },
+    // The gate the runtime pref flip lands on: idempotent, and repaints so a player who
+    // toggles the OS switch sees the ring settle on the same frame, not at the next hint.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion) draw();
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     measure,
     redraw: draw,
     showHint(car) {
