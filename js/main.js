@@ -21,7 +21,7 @@ const el = {
   restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
   toast: $('toast'), canvas: $('lot'), wipe: $('wipe'),
   sound: $('sound'), pause: $('pause'), resume: $('resume'), veil: $('pausedveil'),
-  fullscreen: $('fullscreen'), help: $('help'), helpcard: $('helpcard'), helpclose: $('helpclose'),
+  fullscreen: $('fullscreen'), motion: $('motion'), help: $('help'), helpcard: $('helpcard'), helpclose: $('helpclose'),
   tools: $('tools'),
 };
 
@@ -368,6 +368,28 @@ function setPaused(on) {
   return app.paused;
 }
 
+// 动效偏好是三态：'auto' 跟随系统，'on'/'off' 是玩家的显式覆盖。view 那侧的参数是
+// 「要不要减动效」，所以只有 'off' 映射成 true —— 写成 `=== 'on'` 会把「我要动效」
+// 落成全静止，两条口径反了（实测见 css/game.css 的 data-motion 段）。
+function reducedFrom(mode) {
+  return mode === 'auto' ? null : mode === 'off';
+}
+
+// 三态循环：自动（跟随系统）→ 关 → 开。按钮上的字就是存档里的那一态，不做二次解释。
+const MOTION_CYCLE = ['auto', 'off', 'on'];
+const MOTION_TEXT = { auto: '动效 自动', off: '动效 关', on: '动效 开' };
+
+function applyMotion(mode) {
+  const next = store.setMotion(mode);
+  view.setMotion(reducedFrom(next));
+  el.motion.textContent = MOTION_TEXT[next];
+  return next;
+}
+
+function cycleMotion() {
+  return applyMotion(MOTION_CYCLE[(MOTION_CYCLE.indexOf(store.motion) + 1) % MOTION_CYCLE.length]);
+}
+
 function setSound(on) {
   app.sound = store.setSound(on);
   audio.setMuted(!app.sound); // 真停 AudioContext，不是把 gain 拧到 0
@@ -419,6 +441,7 @@ el.sound.addEventListener('click', () => {
   if (on) audio.toggle();
 });
 el.fullscreen.addEventListener('click', () => { audio.play('tap'); toggleFullscreen(); });
+el.motion.addEventListener('click', () => { audio.play('tap'); say(`动效：${MOTION_TEXT[cycleMotion()]}`); });
 el.help.addEventListener('click', () => { audio.play('tap'); openHelp(!app.helpOpen); });
 el.helpclose.addEventListener('click', () => { audio.play('tap'); openHelp(false); });
 document.addEventListener('fullscreenchange', syncFullscreen);
@@ -471,8 +494,7 @@ window.addEventListener('keydown', (ev) => {
 });
 
 view.start();
-// 存档里的动效偏好：'auto' 跟随系统，'on'/'off' 是显式覆盖。
-view.setMotion(store.motion === 'auto' ? null : store.motion === 'on');
+applyMotion(store.motion);
 setSound(store.sound !== false);
 syncFullscreen();
 // Deliberately not paused on visibilitychange: the escape animation and the win card are
@@ -539,9 +561,8 @@ window.gridlock = {
     return app.game.moves;
   },
   setMotion(mode) {
-    const next = store.setMotion(mode);
-    view.setMotion(next === 'auto' ? null : next === 'on');
-    return { stored: next, reduced: view.reducedMotion };
+    const next = applyMotion(mode);
+    return { stored: next, reduced: view.reducedMotion, dom: document.documentElement.dataset.motion };
   },
   setSound,
   setPaused,

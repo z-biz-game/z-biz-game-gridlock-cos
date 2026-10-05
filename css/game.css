@@ -161,6 +161,23 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   button { transition: none; }
 }
 
+/* 动效的真值只有一处：js/view.js 把「系统 ∪ 面板显式覆盖」的决议写到 <html data-motion>。
+   媒体查询管没人点过开关的默认，data-motion 管显式覆盖，且选择器更具体（0,1,2 > 0,1,0）
+   所以赢 —— 否则「系统开了减动效、玩家显式要动效」时画布动而幕布不动，两段口径分家。 */
+html[data-motion="off"] .curtain-card,
+html[data-motion="off"] .modal-card,
+html[data-motion="off"] .toast { animation: none; }
+html[data-motion="off"] .veil,
+html[data-motion="off"] .curtain,
+html[data-motion="off"] .modal { backdrop-filter: none; }
+html[data-motion="off"] button { transition: none; }
+html[data-motion="on"] .curtain-card { animation: rise 260ms ease-out; }
+html[data-motion="on"] .modal-card { animation: rise 220ms ease-out; }
+html[data-motion="on"] .toast { animation: rise 180ms ease-out; }
+html[data-motion="on"] .veil { backdrop-filter: blur(2px); }
+html[data-motion="on"] .curtain { backdrop-filter: blur(3px); }
+html[data-motion="on"] .modal { backdrop-filter: blur(4px); }
+
 @media (max-width: 820px) {
   body { overflow: auto; }
   .stage { grid-template-columns: 1fr; flex: none; height: auto; }

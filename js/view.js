@@ -55,19 +55,27 @@ export function createView(canvas, { onCommit } = {}) {
   let escape = 0; // 0..1, the hero leaving the lot
   let raf = 0;
   let last = 0;
-  // animClock 是本文件唯一还在直接吃帧 dt 的积分分钟：提示脉冲环与出口微光都按它取值。
-  // 它必须写成 `+= dt`（而不是 `+= 1/60`），否则同一虚拟时长在 30Hz 与 120Hz 下会数出两个
-  // 不同的秒数 —— 派工单 §3 的阴性对照就钉在这一行上。
+  // animClock 与 escape 是本文件仅有的两处直接吃帧 dt 的积分：提示脉冲环、出口微光、主角
+  // 离场滑行都按它们取值。必须写成 `+= dt`（而不是 `+= 1/60`），否则同一虚拟时长在 30Hz 与
+  // 120Hz 下会数出两个不同的秒数 —— 派工单 §3 的阴性对照就钉在这两行上。
   let animClock = 0;
   let paused = false;
   let frames = 0;
   const motionQuery = reducedMotionQuery();
-  let motionOverride = null; // null = 跟随系统；true/false = 面板上的动效开关
+  let motionOverride = null; // null = 跟随系统；true/false = 显式「减动效」
   const patterns = { asphalt: null, concrete: null };
 
   const reducedMotion = () => (motionOverride === null
     ? !!(motionQuery && motionQuery.matches)
     : motionOverride);
+
+  // 决议结果只有一处真值，但它管两段：画布（本文件）与 DOM（css/game.css 的幕布、卡片、
+  // 吐司）。媒体查询自己说话时，「系统开了减动效、玩家在面板上显式要动效」会出现画布动起来
+  // 而幕布还在直接淡入的分家 —— 所以把决议写到 <html data-motion>，让 CSS 也读同一个口径。
+  function publishMotion() {
+    const root = typeof document === 'undefined' ? null : document.documentElement;
+    if (root && root.dataset) root.dataset.motion = reducedMotion() ? 'off' : 'on';
+  }
 
   function loadTextures() {
     if (typeof Image !== 'undefined' && typeof canvas.ownerDocument !== 'undefined') {
@@ -394,8 +402,9 @@ export function createView(canvas, { onCommit } = {}) {
       return paused;
     },
     get paused() { return paused; },
-    setMotion(on) {
-      motionOverride = on === null ? null : !!on;
+    setMotion(reduced) {
+      motionOverride = reduced === null ? null : !!reduced;
+      publishMotion();
       draw();
       return reducedMotion();
     },
