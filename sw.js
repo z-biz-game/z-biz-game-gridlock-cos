@@ -24,7 +24,6 @@ const SHELL_URLS = [
   './js/core/game.js',
   './js/core/law.js',
   './js/core/lot.js',
-  './js/core/make.js',
   './js/core/rng.js',
   './js/core/solve.js',
   './js/core/storage.js',
