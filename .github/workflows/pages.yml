@@ -20,13 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # No bundler and no dependencies: the game ships plain ES modules, so the site is a
-      # file copy. Only these three paths are reachable from index.html — keep the server,
-      # the electron shell, the generator and the tests out of the artifact.
+      # file copy. Everything index.html and the manifest point at has to be copied or it 404s
+      # on the deployed site: the art (favicon set, apple-touch-icon, PWA icons, og card, the
+      # two lot textures), the manifest itself, and the service worker. The server, the electron
+      # shell, the generator and the tests stay out of the artifact.
       - name: Assemble static site
         run: |
           mkdir _site
-          cp index.html _site/
-          cp -r css js _site/
+          cp index.html manifest.webmanifest sw.js _site/
+          cp -r css js assets _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
