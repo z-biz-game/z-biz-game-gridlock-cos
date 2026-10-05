@@ -7,7 +7,7 @@
 // file:// 下不注册（注册代码在 index.html 里按 protocol 分流），这里另外挡掉非 http(s) 的
 // 请求，免得某个把站点直接开成 file:// 的打包方式在 SW 里抛未捕获异常。
 
-const VERSION = 'gridlock-v1.1.0';
+const VERSION = 'gridlock-v1.1.1';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -16,13 +16,27 @@ const SHELL_URLS = [
   './index.html',
   './manifest.webmanifest',
   './css/game.css',
+  // main.js 是 type=module：浏览器按 import 图逐个拉 js/core/*，少一条就是一条 504。
+  // 只缓存三个入口模块的话，「装完第一次打开就断网」这台设备连关卡池都取不到。
   './js/main.js',
   './js/view.js',
   './js/audio.js',
+  './js/core/game.js',
+  './js/core/law.js',
+  './js/core/lot.js',
+  './js/core/make.js',
+  './js/core/rng.js',
+  './js/core/solve.js',
+  './js/core/storage.js',
+  './js/core/library.js',
+  './js/data/lots.js',
   './assets/img/icon-192.png',
   './assets/img/icon-512.png',
+  './assets/img/icon-maskable-512.png',
   './assets/img/apple-touch-icon.png',
+  './assets/img/favicon.png',
   './assets/img/favicon-32.png',
+  './assets/img/favicon-16.png',
   './assets/img/tex-asphalt-256.png',
   './assets/img/tex-concrete-256.png',
 ];
