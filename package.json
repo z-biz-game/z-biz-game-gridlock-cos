@@ -32,8 +32,9 @@
   "build": {
     "appId": "com.zbiz.gridlock",
     "productName": "Gridlock",
-    "mac": { "category": "public.app-category.puzzle-games" },
-    "win": { "target": "nsis" },
-    "linux": { "target": "AppImage" }
+    "icon": "assets/img/icon-192.png",
+    "mac": { "category": "public.app-category.puzzle-games", "icon": "assets/img/icon-master-1024.png" },
+    "win": { "target": "nsis", "icon": "assets/img/icon-master-1024.png" },
+    "linux": { "target": "AppImage", "icon": "assets/img/icon-512.png" }
   }
 }
