@@ -67,6 +67,10 @@ if [ -z "${SKIP_UNIT:-}" ]; then
     echo "--- $f"
     node "$f" || FAILED=1
   done
+  # 难度台架：与 ci.yml 的 Balance 步骤同一条命令、同一个有界样本（SAMPLES=4，本机实测 27.2 秒）。
+  # 全量是 `npm run balance`（SAMPLES=40，本机实测 267.3 秒 = 4m27s），留给本地单独跑，不压进这道闸。
+  echo "=== balance (SAMPLES=4) ==="
+  SAMPLES=4 npm run balance || FAILED=1
   # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑。缺这一步就是「本地全绿、线上 404 自己的
   # manifest / sw.js / 图标」这一整类坏法。它不碰 Chrome，也不读页面，纯查产物。
   echo "=== deploy-set ==="

@@ -33,7 +33,10 @@ node server.cjs            # http://127.0.0.1:5180/
 npm run unit               # 七个 node 测试套件，合计 75 条断言、5.8 秒
 bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标键盘验收，六个场景 78 条
 npm run bake               # 重新生成 js/data/lots.js（约 5 分钟，见下）
-npm run balance            # 生成器体检：接受率、两个数字、耗时（约 3 分钟，实测 2m56s）
+npm run balance            # 生成器体检：接受率、两个数字、耗时（全量 SAMPLES=40，本机实测 267.3 秒 = 4m27s）
+SAMPLES=4 npm run balance  # 有界样本：实测 27.2 秒；CI 的 unit job 与 tools/verify.sh 跑的就是这一条
+                           # 有界样本只证明台架跑得完、字段还在：**接受率/耗时数字一律以全量为准**——
+                           # SAMPLES=4 这一跑 `lane` 就是 0/4（全量是 25/40），把 4 个样本读成难度是假话
 npm run scatter            # 反证：随机撒车每档 1 万个的产出（实测 4m21s，见 DESIGN 第 3 节）
 npx electron .             # 桌面壳（需先 npm i -D electron）
 ```
@@ -62,9 +65,9 @@ npx electron .             # 桌面壳（需先 npm i -D electron）
 通道只逼出 3 / 6 —— 面板就把这个差印成"通道逼出 3／6"（`js/main.js:114`），
 剩下的 21 拖与 41 格全是这盘棋逼你绕的路。
 
-所以浏览器永远不生成关卡，只从池子里挑。这不是洁癖：`test/balance.mjs` 实测顶层段位
-（死锁）中位数 2.16 秒、最差 14.6 秒、40 个种子里只有 12 个能长出合格关卡。这个成本放在
-构建期是免费的，放在玩家点一下屏幕之后是灾难。
+所以浏览器永远不生成关卡，只从池子里挑。这不是洁癖：`test/balance.mjs` 全量（每档 40 个**样本**，
+不是 40 道出厂关卡）实测顶层段位（死锁）中位数 3.07 秒、最差 24.5 秒、40 个种子里只有 12 个能长出
+合格关卡。这个成本放在构建期是免费的，放在玩家点一下屏幕之后是灾难。
 
 ## 已烘焙的池子
 

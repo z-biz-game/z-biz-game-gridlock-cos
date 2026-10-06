@@ -24,6 +24,16 @@ jobs:
         run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
       - name: Suites
         run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+      # The difficulty leg. `npm run balance` existed and README quoted it as the proof that
+      # generation cannot run in the browser, but no CI surface ever invoked it -- the claim was
+      # guarded only by someone remembering to type the command. The full default run costs
+      # 267.3s measured (40 samples x 4 tiers), which would stall this job, so CI runs the
+      # bounded sample the script already supports: SAMPLES=4 costs 27.2s measured here and keeps
+      # every structural column live. `npm run balance` at full sample stays the local command.
+      - name: Balance (难度台架, bounded sample)
+        env:
+          SAMPLES: 4
+        run: npm run balance
       # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
       # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
       # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
