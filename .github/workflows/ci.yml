@@ -23,7 +23,7 @@ jobs:
       - name: Syntax
         run: npm run check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
       # The difficulty leg. `npm run balance` existed and README quoted it as the proof that
       # generation cannot run in the browser, but no CI surface ever invoked it -- the claim was
       # guarded only by someone remembering to type the command. The full default run costs
