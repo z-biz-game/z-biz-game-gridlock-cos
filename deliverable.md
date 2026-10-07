@@ -60,7 +60,7 @@
 | 7 | `store.markDaily` 定义了但没人调 | 每日关卡的完成状态永远写不进存档 —— 幽灵功能 | `resolve()` 返回 `day`，`finish()` 真实调用；货架显示"已通过" | `js/main.js:69,227`；`@save` 断言 |
 | 8 | `exportText` / `importText` 留在仓库里 | 没有任何 UI 接线的存档读写函数，是"文件存在但功能不存在" | 删掉；把唯一的破坏性操作换成真接线的"清空存档"，并且二次确认 | `js/core/storage.js:129`；`js/main.js:355`；`@save` 断言 |
 | 9 | 在 `visibilitychange` 上暂停 rAF（常规省电写法） | headless Chrome 把自己报成 hidden，通关动画与胜利卡片永不触发，浏览器测试永远看不到通关 | 显式不接该事件，并在代码里写明原因 | `js/main.js:373` |
-| 10 | 把合法性夹紧扣给视图（手指拖到哪算哪） | 规则会出现两套：测试走 `commit()`、真手走 `view`，从此互不证明 | 视图只做装饰性夹紧（只会少报），`game.slide` 是唯一合法性来源 | `js/view.js:106`；`js/core/game.js:51`；`@pointer` 的八倍过拉断言 |
+| 10 | 把合法性夹紧扣给视图（手指拖到哪算哪） | 规则会出现两套：测试走 `commit()`、真手走 `view`，从此互不证明 | 视图只做装饰性夹紧（只会少报），`game.slide` 是唯一合法性来源 | `js/view.js:113`；`js/core/game.js:51`；`@pointer` 的八倍过拉断言 |
 | 11 | 页面内注入 JS 就算"测过交互" | 能证明 `commit()` 正确，证明不了**手指点得着车** | `@pointer` 跑在 Node 侧，坐标取自 `gridlock.carPoint(i)`，逐条 dispatch 真实 `Input.dispatchMouseEvent` | `tools/playtest.mjs` pointer 段 |
 | 12 | 用 Playwright/Puppeteer 做台架 | 要进 Pages CI 的仓库，多一个依赖多一条供应链；本地装过才知道 CI 环境不同 | 零依赖：Node 21+ 的全局 `fetch` + `WebSocket` 直讲 CDP | `package.json` 的 `dependencies` / `devDependencies` 均为 `{}` |
 | 13 | `JSON.parse` 整行 console 输出 | headless Chrome 会在同一行后追加别的 console 文本，直接 parse 是随机失败 | 花括号计数截取 | `tools/verify.sh` |

@@ -76,6 +76,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   echo "=== deploy-set ==="
   node tools/deploy-set.mjs || FAILED=1
   node tools/deploy-set-selftest.mjs || FAILED=1
+  # 文档引用腿：三份文档里那批 `文件:行号` 以前一条都没核过——"文档说的是第 115 行"这句话的真假
+  # 全靠写文档那一刻有人手算过。这一条不开浏览器、不读页面，纯拿文档当输入对账，所以和本仓其余
+  # node 闸共用同一条命令（package.json 的 docs / ci.yml 的 Doc citation leg 跑的是同一支脚本）。
+  echo "=== doctest ==="
+  node tools/doctest.mjs || FAILED=1
 fi
 
 export CDP_PORT

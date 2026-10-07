@@ -43,6 +43,11 @@ jobs:
       # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
       - name: Deploy set gate proves it can fail
         run: node tools/deploy-set-selftest.mjs
+      # 文档引用腿：README/DESIGN/deliverable 里的行号引用逐条对账（范围+空行 / 整词锚点 /
+      # 假引用台账 9 把）。本地 npm run docs、npm test、bash tools/verify.sh 调的是同一条命令，
+      # 所以这条不是"只在 CI 跑的门"。它纯逻辑、不开浏览器。
+      - name: Doc citation leg
+        run: node tools/doctest.mjs
 
   # The shell is only proven by driving a real page with real input events.
   browser:
