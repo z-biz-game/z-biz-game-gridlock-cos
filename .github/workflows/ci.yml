@@ -21,9 +21,33 @@ jobs:
         with:
           node-version: 22
       - name: Syntax
-        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+        run: npm run check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
+      # The difficulty leg. `npm run balance` existed and README quoted it as the proof that
+      # generation cannot run in the browser, but no CI surface ever invoked it -- the claim was
+      # guarded only by someone remembering to type the command. The full default run costs
+      # 267.3s measured (40 samples x 4 tiers), which would stall this job, so CI runs the
+      # bounded sample the script already supports: SAMPLES=4 costs 27.2s measured here and keeps
+      # every structural column live. `npm run balance` at full sample stays the local command.
+      - name: Balance (难度台架, bounded sample)
+        env:
+          SAMPLES: 4
+        run: npm run balance
+      # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
+      # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
+      # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
+      - name: Deploy set gate
+        run: node tools/deploy-set.mjs
+      # 阴性自证：每一类断言当场被打红一次，闸必须点名吃掉那一刀；写在注释里的假路径
+      # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
+      - name: Deploy set gate proves it can fail
+        run: node tools/deploy-set-selftest.mjs
+      # 文档引用腿：README/DESIGN/deliverable 里的行号引用逐条对账（范围+空行 / 整词锚点 /
+      # 假引用台账 9 把）。本地 npm run docs、npm test、bash tools/verify.sh 调的是同一条命令，
+      # 所以这条不是"只在 CI 跑的门"。它纯逻辑、不开浏览器。
+      - name: Doc citation leg
+        run: node tools/doctest.mjs
 
   # The shell is only proven by driving a real page with real input events.
   browser:

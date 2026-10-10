@@ -13,8 +13,11 @@
     "scatter": "node test/scatter.mjs",
     "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
     "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
-    "test": "npm run check && npm run unit",
-    "verify": "bash tools/verify.sh"
+    "docs": "node tools/doctest.mjs",
+    "test": "npm run check && npm run unit && npm run docs",
+    "verify": "bash tools/verify.sh",
+    "deploy-set": "node tools/deploy-set.mjs",
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs"
   },
   "keywords": [
     "game",
@@ -32,9 +35,14 @@
   "build": {
     "appId": "com.zbiz.gridlock",
     "productName": "Gridlock",
-    "icon": "assets/img/icon-192.png",
-    "mac": { "category": "public.app-category.puzzle-games", "icon": "assets/img/icon-master-1024.png" },
-    "win": { "target": "nsis", "icon": "assets/img/icon-master-1024.png" },
-    "linux": { "target": "AppImage", "icon": "assets/img/icon-512.png" }
+    "mac": {
+      "category": "public.app-category.puzzle-games"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

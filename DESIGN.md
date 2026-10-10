@@ -106,7 +106,7 @@ solved(comp, pos)        // pos[hero] + len[hero] >= w，即车已经开进闸�
 
 视图和规则各夹一次，语义不同，别混：
 
-- `js/view.js:106` 是**装饰性**的：跟手时让车贴到邻车保险杠就停，只会**少报**可行距离。
+- `js/view.js:113` 是**装饰性**的：跟手时让车贴到邻车保险杠就停，只会**少报**可行距离。
 - `js/view.js:112` 先把像素距离四舍五入成整格，
   `js/core/game.js:51` 再把这一格数夹进 `[-back, fwd]` —— **合法性的夹紧只有这一处**。
 
@@ -136,7 +136,7 @@ solved(comp, pos)        // pos[hero] + len[hero] >= w，即车已经开进闸�
 
 ### 2.6 搜索里不许分配
 
-`compile()` 把 spec 预转成 `Uint8Array` 字段（`js/core/lot.js:17`），
+`compile()` 把 spec 预转成 `Uint8Array` 字段（`js/core/lot.js:23`），
 `occupancy(comp, pos, into)` 的第三参数让调用方复用一个缓冲，`reach` 靠"擦掉这辆车再画回去"来探路
 （`js/core/lot.js:119` 和 `:129`，**这两行必须成对**，少一行还原就是全错的可达距离）。
 40 万状态的搜索如果每状态新建一个数组，烤一次池子从分钟级掉到小时级。
@@ -228,7 +228,7 @@ gridlock 下界 26 落在 junction 的 22–42 之内）。这不是 bug 而是�
 
 - `witness`（`js/core/law.js:90`）：只数出口那条通道逼出来的最小动作，人手可以对着图数完。
   它同时是两个数字的下界，`tools/bake.mjs` 复验时会重算并比对（`test/library.test.mjs:46` 也查）。
-- `table`（`js/core/solve.js:137`）：从**每一个已通关位置**反向多源跑一遍，得到组件里每个局面
+- `distTable`（`js/core/solve.js:137`）：从**每一个已通关位置**反向多源跑一遍，得到组件里每个局面
   到通关的距离。它证明的不只是"起点值多少步"，而是"你在这一关里走错的每一步，界面上那句
   '还差 N 步'都是对的"。61/64 关带这张表；`lane-06/07/14` 的组件超过
   `tools/bake.mjs:33` 的 `TABLE_BUDGET = 40000`，只发行起点那两个数字，

@@ -54,6 +54,13 @@ export function createView(canvas, { onCommit } = {}) {
   let hint = null; // { car, until }
   let escape = 0; // 0..1, the hero leaving the lot
   let raf = 0;
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 提示环的 t = (now % 900) / 900 喂给线宽（2 + t*4）和透明度（0.85 - t*0.55），
+  // 是一段纯装饰的呼吸。减弱动效下把 t 钉在 0.5：环还在、还是那辆车、亮度照旧，
+  // 只是不再一涨一落 —— 提示是信息，涨落是装饰。
+  let reduceMotion = false;
+  const ringPhase = () => (reduceMotion ? 0.5 : (performance.now() % 900) / 900);
+
   let last = 0;
   // animClock 与 escape 是本文件仅有的两处直接吃帧 dt 的积分：提示脉冲环、出口微光、主角
   // 离场滑行都按它们取值。必须写成 `+= dt`（而不是 `+= 1/60`），否则同一虚拟时长在 30Hz 与
@@ -393,6 +400,16 @@ export function createView(canvas, { onCommit } = {}) {
       const p = toClient(horiz ? at : comp.cross[i] + 0.5, horiz ? comp.cross[i] + 0.5 : at);
       return { ...p, horiz };
     },
+    // The gate the runtime pref flip lands on: idempotent, and repaints so a player who
+    // toggles the OS switch sees the ring settle on the same frame, not at the next hint.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion) draw();
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     measure,
     redraw: draw,
     setPaused(on) {

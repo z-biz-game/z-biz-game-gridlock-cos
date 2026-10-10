@@ -11,7 +11,7 @@
 #   SCENARIOS="law" ./tools/verify.sh       # one browser suite while editing the panel
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-CDP_PORT=${CDP_PORT:-9340}
+CDP_PORT=${CDP_PORT:-9340}; if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then echo ":$CDP_PORT is already LISTENING — a sibling gate or an orphan Chrome holds it; attaching there reads someone else's browser. Wait for it to finish, or rerun with CDP_PORT=<a free port>." >&2; lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >&2 || true; exit 6; fi  # 一机一台：撞在同一个默认口上时不报错的是 Chrome，报错的是绿——先让路再开闸
 WEB_PORT=${WEB_PORT:-5180}
 BASE=${BASE_URL:-http://127.0.0.1:$WEB_PORT/}
 CHROME=${CHROME_BIN:-}
@@ -67,6 +67,20 @@ if [ -z "${SKIP_UNIT:-}" ]; then
     echo "--- $f"
     node "$f" || FAILED=1
   done
+  # 难度台架：与 ci.yml 的 Balance 步骤同一条命令、同一个有界样本（SAMPLES=4，本机实测 27.2 秒）。
+  # 全量是 `npm run balance`（SAMPLES=40，本机实测 267.3 秒 = 4m27s），留给本地单独跑，不压进这道闸。
+  echo "=== balance (SAMPLES=4) ==="
+  SAMPLES=4 npm run balance || FAILED=1
+  # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑。缺这一步就是「本地全绿、线上 404 自己的
+  # manifest / sw.js / 图标」这一整类坏法。它不碰 Chrome，也不读页面，纯查产物。
+  echo "=== deploy-set ==="
+  node tools/deploy-set.mjs || FAILED=1
+  node tools/deploy-set-selftest.mjs || FAILED=1
+  # 文档引用腿：三份文档里那批 `文件:行号` 以前一条都没核过——"文档说的是第 115 行"这句话的真假
+  # 全靠写文档那一刻有人手算过。这一条不开浏览器、不读页面，纯拿文档当输入对账，所以和本仓其余
+  # node 闸共用同一条命令（package.json 的 docs / ci.yml 的 Doc citation leg 跑的是同一支脚本）。
+  echo "=== doctest ==="
+  node tools/doctest.mjs || FAILED=1
 fi
 
 export CDP_PORT

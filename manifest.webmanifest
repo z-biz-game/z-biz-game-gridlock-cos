@@ -1,56 +1,26 @@
 {
-  "name": "死锁车库 GRIDLOCK",
-  "short_name": "GRIDLOCK",
-  "description": "把主角车开出停车场。每一关的最少步数都是广度优先搜索量出来的，两条独立搜索路对账才发行。",
-  "lang": "zh-CN",
-  "dir": "ltr",
-  "id": "./",
-  "start_url": "./?source=pwa",
-  "scope": "./",
+  "name": "死锁车库",
+  "short_name": "死锁车库",
+  "start_url": ".",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "orientation": "any",
-  "background_color": "#101217",
-  "theme_color": "#14161a",
-  "categories": ["games", "puzzle"],
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
   "icons": [
     {
-      "src": "assets/img/icon-192.png",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "assets/img/icon-512.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "assets/img/icon-maskable-512.png",
+      "src": "icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "assets/img/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "每日死锁",
-      "short_name": "每日",
-      "description": "今天这一关对所有人相同",
-      "url": "./?source=pwa#/daily"
-    },
-    {
-      "name": "继续战役",
-      "short_name": "战役",
-      "description": "回到最近解锁的一关",
-      "url": "./?source=pwa#/c/1"
     }
   ]
 }
