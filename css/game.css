@@ -156,7 +156,7 @@ a[href],
 }
 
 /* Reduced motion — the CSS half of the pair (design standard §4).
-   The motion in this game lives in the canvas, not in this file: js/main.js:546-556 reads
+   The motion in this game lives in the canvas, not in this file: js/main.js:579-589 reads
    prefers-reduced-motion, follows it live (matchMedia 'change'), and js/view.js:305-308 stops
    the rAF loop and the ring phase when it is on. So there is no transition or @keyframes here
    to neutralise today — but the CSS half has to exist, because a stylesheet that says nothing

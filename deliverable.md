@@ -57,9 +57,9 @@
 | 4 | 生长目标打在难度区间的中点 | 一超界就停 ⇒ 每档全部堆在下界，台架打出 top band = `19 19 19`，四个关卡穿一件衣服 | 目标取区间**上界**；并加 `patience/debt/saved` 回滚，允许先摆平台车再由后面的车偿清 | `js/core/make.js:117,133`；`test/make.test.mjs` "the ladder is a ladder" |
 | 5 | 浏览器里点"换一辆车"时现场生成 | 实测单关最长 14.6 秒、接受率 12/40。无进度条的几十秒冻结不是产品 | 生成只在构建期跑；`js/core/make.js` 没有被任何 shipped 代码 import，运行时只查表 | DESIGN.md 第 3.3 节实测表；`js/core/library.js` 顶部说明 |
 | 6 | 台架断言"点一次提示就记一次提示" | 提示数不在点击时结算，而在通关时随成绩一起入账（否则中途放弃会留下永久提示记录）。**代码是对的，测试是错的** | 断言改成"完成时结算"，并补一条"用提示打平不算完美" | `js/core/storage.js:124`；`test/storage.test.mjs` "a par matched with help is a solve, not a perfect" |
-| 7 | `store.markDaily` 定义了但没人调 | 每日关卡的完成状态永远写不进存档 —— 幽灵功能 | `resolve()` 返回 `day`，`finish()` 真实调用；货架显示"已通过" | `js/main.js:69,227`；`@save` 断言 |
-| 8 | `exportText` / `importText` 留在仓库里 | 没有任何 UI 接线的存档读写函数，是"文件存在但功能不存在" | 删掉；把唯一的破坏性操作换成真接线的"清空存档"，并且二次确认 | `js/core/storage.js:129`；`js/main.js:355`；`@save` 断言 |
-| 9 | 在 `visibilitychange` 上暂停 rAF（常规省电写法） | headless Chrome 把自己报成 hidden，通关动画与胜利卡片永不触发，浏览器测试永远看不到通关 | 显式不接该事件，并在代码里写明原因 | `js/main.js:373` |
+| 7 | `store.markDaily` 定义了但没人调 | 每日关卡的完成状态永远写不进存档 —— 幽灵功能 | `resolve()` 返回 `day`，`finish()` 真实调用；货架显示"已通过" | `js/main.js:75,254`；`@save` 断言 |
+| 8 | `exportText` / `importText` 留在仓库里 | 没有任何 UI 接线的存档读写函数，是"文件存在但功能不存在" | 删掉；把唯一的破坏性操作换成真接线的"清空存档"，并且二次确认 | `js/core/storage.js:129`；`js/main.js:388`；`@save` 断言 |
+| 9 | 在 `visibilitychange` 上暂停 rAF（常规省电写法） | headless Chrome 把自己报成 hidden，通关动画与胜利卡片永不触发，浏览器测试永远看不到通关 | 显式不接该事件，并在代码里写明原因 | `js/main.js:406` |
 | 10 | 把合法性夹紧扣给视图（手指拖到哪算哪） | 规则会出现两套：测试走 `commit()`、真手走 `view`，从此互不证明 | 视图只做装饰性夹紧（只会少报），`game.slide` 是唯一合法性来源 | `js/view.js:113`；`js/core/game.js:51`；`@pointer` 的八倍过拉断言 |
 | 11 | 页面内注入 JS 就算"测过交互" | 能证明 `commit()` 正确，证明不了**手指点得着车** | `@pointer` 跑在 Node 侧，坐标取自 `gridlock.carPoint(i)`，逐条 dispatch 真实 `Input.dispatchMouseEvent` | `tools/playtest.mjs` pointer 段 |
 | 12 | 用 Playwright/Puppeteer 做台架 | 要进 Pages CI 的仓库，多一个依赖多一条供应链；本地装过才知道 CI 环境不同 | 零依赖：Node 21+ 的全局 `fetch` + `WebSocket` 直讲 CDP | `package.json` 的 `dependencies` / `devDependencies` 均为 `{}` |

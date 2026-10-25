@@ -10,6 +10,10 @@ import {
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
 import { createView } from './view.js';
+// 听觉与触觉这两路反馈：视觉与数值之外，桌面上还该有"听得见"的一路。
+// 音频模块自己管手势解锁与真静音（suspend），这里只管把音接到引擎的判定上。
+import { audio } from './audio.js';
+import { haptics } from './haptics.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -34,6 +38,8 @@ const app = {
   // Which of the lot's two certified numbers the grade is read against. Both ledgers are
   // kept whatever this says (js/core/game.js), so switching never invalidates a run.
   law: store.law || DRAG,
+  // 这一局赢过没有：通关声只响一次（见 finish()）。
+  won: false,
 };
 
 function lawName() {
@@ -87,6 +93,7 @@ function setGame(lot, label) {
   app.label = label || app.label;
   app.game = createGame(lot);
   app.hints = 0;
+  app.won = false;              // 上一局赢过不算数：这一局还没赢
   view.attach(app.game);
   el.curtain.hidden = true;
   say('');
@@ -203,14 +210,28 @@ function render() {
 
 // The one place a move happens: the drag from the view, the replay from a test link, and
 // the solver's own route on load all arrive here.
+//
+// 声音接在**引擎的判定**上，不是接在"手指碰过屏幕"上：
+//   · slide() 真挪了车（引擎收了这一步）→ correct
+//   · slide() 一步也没挪（撞了保险杠 / 这局已经收官）→ blocked
+//   · 这一步之后局面解开了（game.done）→ win，而且只响这一次
 function commit(car, d) {
   const moved = slide(app.game, car, d);
   if (!moved) {
+    // 引擎没挪车就是没挪车：这次操作被拒了，玩家得听得见。赢过之后不再响 ——
+    // 通关声重播一遍是吵，可这一声本来说的是"你这一步没生效"。
+    if (!app.won) {
+      audio.play('blocked');
+      haptics.wrong();
+    }
     view.redraw();
     return false;
   }
-  if (app.game.done) finish();
-  else {
+  if (app.game.done) {
+    finish();                      // win 在 finish 里响：这一步只出这一声
+  } else {
+    audio.play('correct');         // 引擎真的挪了车
+    haptics.correct();
     view.redraw();
     renderCrumbs();
     say(`拖动了 ${app.game.comp.axis[car] === 0 ? '横向' : '纵向'}车辆 · 已用 ${app.game.moves} 滑步／${app.game.cells} 格步`);
@@ -221,6 +242,12 @@ function commit(car, d) {
 function finish() {
   const lot = app.lot;
   const g = app.game;
+  // 通关只响一次：赢过之后玩家还能在盘上继续拖，每拖一下都重播通关声是吵的。
+  if (!app.won) {
+    app.won = true;
+    audio.play('win');
+    haptics.correct();
+  }
   const rec = store.solve(lot.id, {
     moves: g.moves, cells: g.cells, par: lot.par, parCell: lot.parCell, hints: app.hints,
   });
@@ -297,6 +324,8 @@ el.modes.addEventListener('click', (ev) => {
 
 el.undo.addEventListener('click', () => {
   if (undo(app.game)) {
+    audio.play('move');         // 盘面退了一步
+    haptics.tap();
     view.redraw();
     renderCrumbs();
     if (app.game.moves === 0) say('回到起点');
@@ -307,9 +336,13 @@ el.hint.addEventListener('click', () => {
   const h = hint(app.game, app.law);
   if (!h) {
     say('这条路已经堵死了 —— 撤销一步或重开，搜索从当前位置找不到出路');
+    audio.play('wrong');        // 引擎说这条路走不通了
+    haptics.wrong();
     return;
   }
   app.hints++;
+  audio.play('move');           // 提示：只说一步，不代劳
+  haptics.tap();
   view.showHint(h.car);
   const horiz = app.game.comp.axis[h.car] === 0;
   const fwd = horiz ? '右' : '下';
@@ -559,3 +592,26 @@ if (__rmHook && typeof __rmHook === 'object') {
   __rmHook.setReduceMotion = applyReduceMotion;
   __rmHook.isReducedMotion = () => view.isReducedMotion();
 }
+
+// ---- 音效开关（#btn-sound）----
+//
+// 静音走 `audio.setMuted(true)`，那是 `ctx.suspend()`：整个 AudioContext 挂起。
+// **不许**改成像"把 master.gain 拧到 0"那样 —— 只拧 gain 是假静音：节点照建、时钟照跑，
+// 取消静音之后还有一截尾巴在响。真正的静音必须是挂起整个上下文。
+//
+// 按钮找不到就不装（和全屏那一条同一条纪律）：留一串没人按的代码等于没做这个功能。
+(function bindSound() {
+  const btn = document.getElementById('btn-sound');
+  if (!btn) return;
+  function paint() {
+    const on = !audio.muted;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? '音效：开' : '音效：关';
+    btn.title = on ? '点击关闭音效' : '点击开启音效';
+  }
+  btn.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    paint();
+  });
+  paint();
+})();
