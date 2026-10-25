@@ -154,3 +154,20 @@ a[href],
   min-height: 44px !important;
   min-width: 44px !important;
 }
+
+/* Reduced motion — the CSS half of the pair (design standard §4).
+   The motion in this game lives in the canvas, not in this file: js/main.js:546-556 reads
+   prefers-reduced-motion, follows it live (matchMedia 'change'), and js/view.js:305-308 stops
+   the rAF loop and the ring phase when it is on. So there is no transition or @keyframes here
+   to neutralise today — but the CSS half has to exist, because a stylesheet that says nothing
+   about the system preference is only correct by accident: the day someone adds a transition
+   to a control, it would animate for the very players who asked the OS not to. This block is
+   that promise, kept where the next transition would have to be written. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
