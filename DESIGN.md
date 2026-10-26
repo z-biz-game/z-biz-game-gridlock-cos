@@ -88,7 +88,7 @@ solved(comp, pos)        // pos[hero] + len[hero] >= w，即车已经开进闸�
 把拖动做成"每过一格算一步"单独看能更简单地骗过视觉，但那样 `par` 就不再是任何一本卡片上的
 数，第 1 节的全部理由同时作废；反过来只做滑步，就丢掉了"这一关真正要挪多少格"这个同样真实
 的量。两条都要，代价是每个数字都必须带着自己的口径名字出现——UI 里没有孤立的"步"字，
-只有 `滑步／格步`（`js/main.js:111`）。
+只有 `滑步／格步`（`js/main.js:118`）。
 
 钉住这个口径的断言：`test/game.test.mjs:43`（一次长拖 = 1 滑步 / 4 格步）、
 `test/game.test.mjs:110`（撤销一次四格拖还回四格）、`test/law.test.mjs:69`（计费表）。
@@ -247,7 +247,7 @@ gridlock 下界 26 落在 junction 的 22–42 之内）。这不是 bug 而是�
 - `#/random/lane/4kq2` 这类链接可分享，收的人拿到同一个堵车；
 - 测试可以钉死种子（`test/make.test.mjs` 用 `face(lot)` 比较序列化结果）。
 
-`js/main.js:258` 有个由此而来的细节：裸 `#/random/lane` 每次访问都是不同关卡且不可复现，
+`js/main.js:285` 有个由此而来的细节：裸 `#/random/lane` 每次访问都是不同关卡且不可复现，
 所以 token 一旦生成就 `location.replace` 写回地址栏。
 
 ---
@@ -270,7 +270,7 @@ gridlock 下界 26 落在 junction 的 22–42 之内）。这不是 bug 而是�
 - 计步口径是**偏好**不是成绩（`js/core/storage.js:75`）：切口径不改任何计数器，
   所以它单独存一个字段， reload 之后由浏览器闸用一次真实 `Page.reload` 验回读
   （见第 7.2 节）。
-- 清空存档是全游戏唯一的破坏性操作，所以做成两次点击（`js/main.js:347`）。
+- 清空存档是全游戏唯一的破坏性操作，所以做成两次点击（`js/main.js:380`）。
 
 ---
 
@@ -287,7 +287,7 @@ Node 21+ 自带全局 `fetch` 与 `WebSocket`，`tools/playtest.mjs` 用它们�
 页面内注入的断言可以证明 `commit()` 正确，但证明不了**手指点得着车**。
 pointer 段是**跑在 Node 侧**的：`base64` 之后逐条 dispatch `Input.dispatchMouseEvent` /
 `Input.dispatchKeyEvent`，坐标来自 `window.gridlock.carPoint(i)`
-（`js/main.js:409` → `js/view.js:286` `pointAt`，把车当前所在的中心换算成 client 像素）。它断言的是：
+（`js/main.js:442` → `js/view.js:286` `pointAt`，把车当前所在的中心换算成 client 像素）。它断言的是：
 
 - 用真实鼠标事件把整条认证路线**逐辆**拖完，每拖一步就核对车停在哪一格，两本账分别核对总数；
 - 原地按下再松开什么都不动；
@@ -327,7 +327,7 @@ canvas 尺寸停在未样式的 `300×150` —— 看起来像线上部署坏了
 
 ### 7.5 不暂停 `visibilitychange`
 
-`js/main.js:373` 显式地不接这个事件。通关动画和胜利卡片由同一个 rAF 循环驱动，
+`js/main.js:406` 显式地不接这个事件。通关动画和胜利卡片由同一个 rAF 循环驱动，
 而 headless Chrome 把自己报成 hidden —— 一暂停，浏览器测试永远看不到通关。
 
 ---

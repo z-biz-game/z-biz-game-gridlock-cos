@@ -1,129 +1,173 @@
-// Sound for 死锁车库: a handful of short synthesised clunks, no audio files.
-//
-// 两件事按派工单 §2 的口径做实，不是做做样子：
-//   ① **静音是真静音**。`setMuted(true)` 走 `AudioContext.suspend()`，并且 `voice()` 在静音态
-//      直接返回 false —— 一个都不新建振荡器。只把 master gain 设 0 是假静音：节点照样建、
-//      照样排程、照样吃 CPU，而 `oscillators` 这个计数器就是用来当场验这一条的。
-//   ② AudioContext **懒建**：浏览器在首次用户手势之前不允许出声，构造期 new AudioContext()
-//      会留下一条 suspended 的僵尸上下文；这里第一次要发声时才建。
-//
-// 没有 Web Audio 的环境（node 测试、老 Electron）里整套 API 退化成 no-op，调用方不必判空。
+/**
+ * 合成短音 —— z-biz-game-lead/005_技术架构/003_Web端设计系统与精致化标准.md §0 的 web 落地。
+ *
+ * 不用音频文件：Web Audio 直接合成短音，零资源、零加载、可分级。
+ * 分级表（type/freq/to/dur/gain）与组织标准 §0 的反馈分级一一对应。
+ *
+ * 三条硬规矩：
+ *  ① **AudioContext 只能在真实手势里创建/恢复**（浏览器自动播放策略）。
+ *     仓内做法：在 pointerdown / keydown 的捕获阶段调 `audio.unlock()`。
+ *  ② **真静音 = 挂起整个 AudioContext**（`ctx.suspend()`），
+ *     不是把 master.gain 拧到 0 —— 只拧 gain 是假静音：节点照建、时钟照跑，
+ *     取消静音还有尾巴。
+ *  ③ **没解锁就不发声**：`play()` 在真实手势之前直接返回 false，一个节点都不建。
+ *     建了也响不了（上下文是挂着的），还会在恢复的那一刻集体补响一遍。
+ *
+ * 用法：
+ *    import { audio } from './audio.js';
+ *    audio.unlock();            // 第一次真实手势里调一次
+ *    audio.play('correct');
+ *    audio.setMuted(true);      // 真静音
+ */
 
-const TONES = {
-  // 一次滑到位：木质的"咔"。
-  slide: { freq: 196, type: 'triangle', dur: 0.09, gain: 0.24, slide: -60 },
-  // 撞上邻车／水泥墩：闷而短。
-  blocked: { freq: 92, type: 'square', dur: 0.06, gain: 0.16, slide: -28 },
-  // 提示：两声上行，像地库里的对讲机。
-  hint: { freq: 523, type: 'sine', dur: 0.07, gain: 0.16, slide: 120 },
-  // 撤销：同一声下行。
-  undo: { freq: 330, type: 'sine', dur: 0.07, gain: 0.14, slide: -110 },
-  // 界面点击。
-  tap: { freq: 660, type: 'square', dur: 0.03, gain: 0.07 },
+// 音效开关是**界面偏好**，不是成绩：单开一个键，不混进存档的版本号里，
+// 免得以后升存档格式时把这条偏好一起丢掉。
+const PREFS_KEY = 'gridlock.audio.v1';
+
+export const VOICES = {
+  tap:     { type: 'triangle', freq: 520, to: 520, dur: 0.05, gain: 0.14 },
+  move:    { type: 'triangle', freq: 300, to: 420, dur: 0.08, gain: 0.12 },
+  place:   { type: 'square',   freq: 640, to: 700, dur: 0.06, gain: 0.10 },
+  correct: { type: 'sine',     freq: 720, to: 980, dur: 0.09, gain: 0.12 },
+  wrong:   { type: 'square',   freq: 150, to: 110, dur: 0.14, gain: 0.11 },
+  blocked: { type: 'sawtooth', freq: 120, to: 96,  dur: 0.16, gain: 0.10 },
+  win:     { arp: [523, 659, 784, 1047], dur: 0.16, gain: 0.13 },
+  lose:    { arp: [392, 330, 262],      dur: 0.20, gain: 0.12 },
 };
 
-export function createAudio({ isMuted, reducedMotion } = {}) {
-  const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+/** 读一次静音偏好。读不到（隐私模式/被拒）就当"有声音"，不假装读过存档。 */
+function readMutedPref() {
+  try {
+    return window.localStorage.getItem(PREFS_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+/** 写静音偏好。写不进去就只是本次会话内有效，不报错、不假装存下了。 */
+function writeMutedPref(on) {
+  try {
+    window.localStorage.setItem(PREFS_KEY, on ? '1' : '0');
+  } catch (err) {
+    /* 存不下就算了：这一会话里开关照样管用 */
+  }
+}
+
+/**
+ * AudioContext 的 resume()/suspend() 都回 Promise。没人接的拒绝会升级成
+ * unhandledrejection，冒到 window.onerror —— 离屏预载时足以把整页判死。
+ * 所以一律就地吞掉：声音发不发出去是别的事，不该让整页陪葬。
+ */
+function quiet(p) {
+  if (p && typeof p.catch === 'function') p.catch(() => {});
+  return p;
+}
+
+export function createAudio({
+  AudioContextCtor = typeof window !== 'undefined'
+    ? (window.AudioContext || window.webkitAudioContext)
+    : null,
+  muted: initialMuted = false,
+} = {}) {
   let ctx = null;
   let master = null;
-  let stats = { created: 0, started: 0, refused: 0, suspends: 0, resumes: 0 };
-
-  const muted = () => (isMuted ? !!isMuted() : false);
-  const available = () => !!AC;
+  let muted = !!initialMuted;
+  let unlocked = false;
 
   function ensure() {
-    if (!available() || muted()) return null;
-    if (!ctx) {
-      ctx = new AC();
-      master = ctx.createGain();
-      master.gain.value = 0.55;
-      master.connect(ctx.destination);
-    }
-    if (ctx.state === 'suspended' && ctx.resume) {
-      ctx.resume().catch(() => { /* autoplay policy still holding it */ });
-      stats.resumes += 1;
-    }
+    if (ctx) return ctx;
+    if (!AudioContextCtor) return null;
+    ctx = new AudioContextCtor();
+    master = ctx.createGain();
+    master.gain.value = 0.9;
+    master.connect(ctx.destination);
+    // 静音期间才建上下文：建完立刻挂起，别让它在静音时还空跑。
+    if (muted) quiet(ctx.suspend());
     return ctx;
   }
 
-  function voice(name, when = 0) {
-    const spec = TONES[name];
-    if (!spec) return false;
+  /** 在真实手势里调用：创建/恢复 AudioContext。 */
+  function unlock() {
     const c = ensure();
-    if (!c) {
-      // 静音态不建节点：这一条是"真静音"与"gain=0"的分界，实测就数它。
-      stats.refused += 1;
-      return false;
-    }
-    const t0 = c.currentTime + when;
-    const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.type = spec.type;
-    osc.frequency.setValueAtTime(spec.freq, t0);
-    if (spec.slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, spec.freq + spec.slide), t0 + spec.dur);
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(spec.gain, t0 + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + spec.dur);
-    osc.connect(gain);
-    gain.connect(master);
-    osc.start(t0);
-    osc.stop(t0 + spec.dur + 0.02);
-    stats.created += 1;
-    stats.started += 1;
+    if (!c) return false;
+    if (!muted && c.state === 'suspended') quiet(c.resume());
+    unlocked = true;
     return true;
   }
 
-  function arp(name) {
+  /** 真静音：挂起整个上下文（不是拧 gain）。 */
+  function setMuted(on) {
+    muted = !!on;
+    writeMutedPref(muted);
+    const c = ctx;
+    if (!c) return;
+    if (muted && c.state === 'running') quiet(c.suspend());
+    if (!muted && c.state === 'suspended' && unlocked) quiet(c.resume());
+  }
+
+  function blip(voice, when = 0) {
     const c = ensure();
-    if (!c) {
-      stats.refused += 1;
-      return false;
+    if (!c || muted) return;
+    if (c.state === 'suspended' && unlocked) quiet(c.resume());
+    const t0 = c.currentTime + when;
+    if (voice.arp) {
+      voice.arp.forEach((f, i) => {
+        const osc = c.createOscillator();
+        const g = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, t0 + i * voice.dur * 0.55);
+        g.gain.setValueAtTime(0, t0 + i * voice.dur * 0.55);
+        g.gain.linearRampToValueAtTime(voice.gain, t0 + i * voice.dur * 0.55 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * voice.dur * 0.55 + voice.dur);
+        osc.connect(g); g.connect(master);
+        osc.start(t0 + i * voice.dur * 0.55);
+        osc.stop(t0 + i * voice.dur * 0.55 + voice.dur + 0.02);
+      });
+      return;
     }
-    // 出场：一段三音上行。reduceMotion 只留最后一个音，安静一点的口径同样适用于耳朵。
-    const notes = reducedMotion && reducedMotion() ? [name] : [name, name * 1.26, name * 1.5];
-    notes.forEach((f, i) => {
-      const t0 = c.currentTime + i * 0.1;
-      const osc = c.createOscillator();
-      const gain = c.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(f, t0);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
-      osc.connect(gain);
-      gain.connect(master);
-      osc.start(t0);
-      osc.stop(t0 + 0.34);
-      stats.created += 1;
-      stats.started += 1;
-    });
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = voice.type || 'sine';
+    osc.frequency.setValueAtTime(voice.freq, t0);
+    if (voice.to) osc.frequency.linearRampToValueAtTime(voice.to, t0 + voice.dur);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(voice.gain, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + voice.dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t0);
+    osc.stop(t0 + voice.dur + 0.02);
+  }
+
+  /**
+   * 放一个音。返回 false 表示**这一声没发出去**（音名不认识，或还没被真实手势解锁）。
+   * 调用方据此知道"这一路反馈没有"，而不是以为响过了。
+   */
+  function play(name) {
+    const voice = VOICES[name];
+    if (!voice) return false;
+    if (!unlocked) return false;   // 规矩③：没解锁就不建节点
+    if (muted) return false;       // 静音态这一声也没发出去，契约上不许报 true
+    blip(voice);
     return true;
   }
 
   return {
-    play(name) { return voice(name); },
-    win() { return arp(392); },
-    // 开关本身也要有反馈，但静音态点它不该有声音——所以先落状态再出声，由调用方保证顺序。
-    toggle() { return voice('tap'); },
-    setMuted(on) {
-      if (!ctx) return;
-      if (on) {
-        if (ctx.suspend) ctx.suspend().catch(() => { /* already closed */ });
-        stats.suspends += 1;
-      } else if (ctx.resume) {
-        ctx.resume().catch(() => { /* autoplay policy */ });
-        stats.resumes += 1;
-      }
-    },
-    get state() {
-      return {
-        available: available(),
-        hasContext: !!ctx,
-        contextState: ctx ? ctx.state : 'none',
-        muted: muted(),
-        ...stats,
-      };
-    },
-    get stats() { return { ...stats }; },
+    unlock,
+    play,
+    setMuted,
+    get muted() { return muted; },
+    get unlocked() { return unlocked; },
   };
+}
+
+/** 默认单例。 */
+export const audio = createAudio({
+  muted: typeof window !== 'undefined' ? readMutedPref() : false,
+});
+
+// 测试环境的假 window 只提供 localStorage、没有事件 API；没有 addEventListener 就跳过，
+// 别让"import 一句 audio.js"在 node 里直接抛。
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pointerdown', () => audio.unlock(), { capture: true, passive: true });
+  window.addEventListener('keydown', () => audio.unlock(), { capture: true });
 }

@@ -16,11 +16,15 @@ const SHELL_URLS = [
   './index.html',
   './manifest.webmanifest',
   './css/game.css',
+  './css/studio.css',
   // main.js 是 type=module：浏览器按 import 图逐个拉 js/core/*，少一条就是一条 504。
   // 只缓存三个入口模块的话，「装完第一次打开就断网」这台设备连关卡池都取不到。
   './js/main.js',
   './js/view.js',
   './js/audio.js',
+  './js/haptics.js',
+  './js/tactile.js',
+  './js/sw-register.js',
   './js/core/game.js',
   './js/core/law.js',
   './js/core/lot.js',

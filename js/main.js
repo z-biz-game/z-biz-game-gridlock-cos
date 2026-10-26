@@ -10,7 +10,10 @@ import {
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
 import { createView } from './view.js';
-import { createAudio } from './audio.js';
+// 听觉与触觉这两路反馈：视觉与数值之外，桌面上还该有"听得见"的一路。
+// 音频模块自己管手势解锁与真静音（suspend），这里只管把音接到引擎的判定上。
+import { audio } from './audio.js';
+import { haptics } from './haptics.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -41,12 +44,9 @@ const app = {
   sound: store.sound !== false,
   paused: false,
   helpOpen: false,
+  // 这一局赢过没有：通关声只响一次（见 finish()）。
+  won: false,
 };
-
-const audio = createAudio({
-  isMuted: () => !app.sound,
-  reducedMotion: () => view.reducedMotion,
-});
 
 function lawName() {
   return lawOf(app.law).label;
@@ -99,6 +99,7 @@ function setGame(lot, label) {
   app.label = label || app.label;
   app.game = createGame(lot);
   app.hints = 0;
+  app.won = false;              // 上一局赢过不算数：这一局还没赢
   view.attach(app.game);
   el.curtain.hidden = true;
   say('');
@@ -215,16 +216,28 @@ function render() {
 
 // The one place a move happens: the drag from the view, the replay from a test link, and
 // the solver's own route on load all arrive here.
+//
+// 声音接在**引擎的判定**上，不是接在"手指碰过屏幕"上：
+//   · slide() 真挪了车（引擎收了这一步）→ correct
+//   · slide() 一步也没挪（撞了保险杠 / 这局已经收官）→ blocked
+//   · 这一步之后局面解开了（game.done）→ win，而且只响这一次
 function commit(car, d) {
   const moved = slide(app.game, car, d);
   if (!moved) {
-    audio.play('blocked');
+    // 引擎没挪车就是没挪车：这次操作被拒了，玩家得听得见。赢过之后不再响 ——
+    // 通关声重播一遍是吵，可这一声本来说的是"你这一步没生效"。
+    if (!app.won) {
+      audio.play('blocked');
+      haptics.wrong();
+    }
     view.redraw();
     return false;
   }
-  audio.play('slide');
-  if (app.game.done) finish();
-  else {
+  if (app.game.done) {
+    finish();                      // win 在 finish 里响：这一步只出这一声
+  } else {
+    audio.play('correct');         // 引擎真的挪了车
+    haptics.correct();
     view.redraw();
     renderCrumbs();
     say(`拖动了 ${app.game.comp.axis[car] === 0 ? '横向' : '纵向'}车辆 · 已用 ${app.game.moves} 滑步／${app.game.cells} 格步`);
@@ -235,6 +248,12 @@ function commit(car, d) {
 function finish() {
   const lot = app.lot;
   const g = app.game;
+  // 通关只响一次：赢过之后玩家还能在盘上继续拖，每拖一下都重播通关声是吵的。
+  if (!app.won) {
+    app.won = true;
+    audio.play('win');
+    haptics.correct();
+  }
   const rec = store.solve(lot.id, {
     moves: g.moves, cells: g.cells, par: lot.par, parCell: lot.parCell, hints: app.hints,
   });
@@ -244,7 +263,6 @@ function finish() {
     store.unlock(Math.max(store.unlocked, app.index + 1));
     nextIndex = app.index < LEVELS ? app.index + 1 : 0;
   }
-  audio.win();
   const gr = grade(g, app.law);
   const other = app.law === CELL ? DRAG : CELL;
   const bestNow = app.law === CELL ? rec.bestCell : rec.best;
@@ -312,7 +330,8 @@ el.modes.addEventListener('click', (ev) => {
 
 el.undo.addEventListener('click', () => {
   if (undo(app.game)) {
-    audio.play('undo');
+    audio.play('tap');          // 盘面退了一步
+    haptics.tap();
     view.redraw();
     renderCrumbs();
     if (app.game.moves === 0) say('回到起点');
@@ -323,10 +342,13 @@ el.hint.addEventListener('click', () => {
   const h = hint(app.game, app.law);
   if (!h) {
     say('这条路已经堵死了 —— 撤销一步或重开，搜索从当前位置找不到出路');
+    audio.play('wrong');        // 引擎说这条路走不通了
+    haptics.wrong();
     return;
   }
   app.hints++;
-  audio.play('hint');
+  audio.play('move');           // 提示：只说一步，不代劳
+  haptics.tap();
   view.showHint(h.car);
   const horiz = app.game.comp.axis[h.car] === 0;
   const fwd = horiz ? '右' : '下';
@@ -352,6 +374,7 @@ function restart() {
   view.attach(app.game);
   view.resetClocks(); // 时钟、离场补间、提示脉冲相位一起归零，不只是模型
   audio.play('tap');
+  haptics.tap();
   render();
   say('回到起点');
 }
@@ -392,7 +415,7 @@ function cycleMotion() {
 
 function setSound(on) {
   app.sound = store.setSound(on);
-  audio.setMuted(!app.sound); // 真停 AudioContext，不是把 gain 拧到 0
+  audio.setMuted(!app.sound); // 真挂起 AudioContext，不是把 gain 拧到 0
   el.sound.setAttribute('aria-pressed', String(!app.sound));
   el.sound.textContent = app.sound ? '声音 开' : '声音 关';
   return app.sound;
@@ -432,18 +455,20 @@ function syncFullscreen() {
 }
 
 el.restart.addEventListener('click', restart);
-el.share.addEventListener('click', () => { audio.play('tap'); shareLink(); });
-el.pause.addEventListener('click', () => { audio.play('tap'); setPaused(!app.paused); });
-el.resume.addEventListener('click', () => { audio.play('tap'); setPaused(false); });
+el.share.addEventListener('click', () => { audio.play('tap'); haptics.tap(); shareLink(); });
+el.pause.addEventListener('click', () => { audio.play('tap'); haptics.tap(); setPaused(!app.paused); });
+el.resume.addEventListener('click', () => { audio.play('tap'); haptics.tap(); setPaused(false); });
 el.sound.addEventListener('click', () => {
-  const on = !app.sound;
-  setSound(on); // 先落状态：静音态点它不该有声音
-  if (on) audio.toggle();
+  // 先落状态：静音态点它不该有声音。开关本身读的是音频单例的真实状态，
+  // 再写回存档，避免两份 muted 各说各话。
+  const on = !audio.muted;
+  setSound(on);
+  if (on) { audio.play('tap'); haptics.tap(); }
 });
-el.fullscreen.addEventListener('click', () => { audio.play('tap'); toggleFullscreen(); });
-el.motion.addEventListener('click', () => { audio.play('tap'); say(`动效：${MOTION_TEXT[cycleMotion()]}`); });
-el.help.addEventListener('click', () => { audio.play('tap'); openHelp(!app.helpOpen); });
-el.helpclose.addEventListener('click', () => { audio.play('tap'); openHelp(false); });
+el.fullscreen.addEventListener('click', () => { audio.play('tap'); haptics.tap(); toggleFullscreen(); });
+el.motion.addEventListener('click', () => { audio.play('tap'); haptics.tap(); say(`动效：${MOTION_TEXT[cycleMotion()]}`); });
+el.help.addEventListener('click', () => { audio.play('tap'); haptics.tap(); openHelp(!app.helpOpen); });
+el.helpclose.addEventListener('click', () => { audio.play('tap'); haptics.tap(); openHelp(false); });
 document.addEventListener('fullscreenchange', syncFullscreen);
 document.addEventListener('webkitfullscreenchange', syncFullscreen);
 el.helpcard.addEventListener('click', (ev) => { if (ev.target === el.helpcard) openHelp(false); });
@@ -480,7 +505,7 @@ window.addEventListener('keydown', (ev) => {
   else if (k === 'r') el.restart.click();
   else if (k === 'p') setPaused(!app.paused);
   else if (k === 'space') { if (!app.helpOpen) setPaused(!app.paused); }
-  else if (k === 'm') setSound(!app.sound);
+  else if (k === 'm') setSound(!audio.muted);
   else if (k === 'f') toggleFullscreen();
   else if (k === '?' || k === '/') openHelp(!app.helpOpen);
   else if (k === 'enter') {
@@ -533,7 +558,7 @@ window.gridlock = {
       escape: view.clock.escape,
       frames: view.clock.frames,
       dropped: store.dropped,
-      audio: audio.state,
+      audio: { muted: audio.muted, unlocked: audio.unlocked },
       unlocked: store.unlocked,
       solved: Object.values(store.records).filter((r) => r.solved).length,
       curtain: !el.curtain.hidden,
